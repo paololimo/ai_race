@@ -13,7 +13,15 @@ place in the project where parallelism is free — no shared state, no ordering,
 nothing to merge. Python threads would not help (the GIL serialises CPU-bound
 work), hence processes.
 
-    python experiments/ablation.py --generations 40 --seeds 3 --workers 6
+One question per group, and groups can be run one at a time:
+
+    python experiments/ablation.py --group sizes     --generations 120 --seeds 7
+    python experiments/ablation.py --group depths    --generations 120 --seeds 7
+    python experiments/ablation.py --group biases    --generations 120 --seeds 7
+    python experiments/ablation.py --group crossover --generations 120 --seeds 7
+
+Each writes its own `outputs/ablation_<group>.json`, so a later run never
+overwrites an earlier answer.
 """
 
 import argparse
@@ -27,7 +35,7 @@ import tempfile
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -130,6 +138,17 @@ OPERATORS: Tuple[Variant, ...] = (
 
 VARIANTS: Tuple[Variant, ...] = ARCHITECTURES + OPERATORS
 
+# One question per group, so they can be run one at a time. The whole grid at
+# seven seeds is hours; each group on its own is a fraction of that, and the
+# answers arrive in an order that lets the later groups be aimed at the winner
+# of the earlier ones rather than at a base picked in advance.
+GROUPS: Dict[str, Tuple[Tuple[Variant, ...], str]] = {
+    "sizes": (SIZES, "SIZE (one layer)"),
+    "depths": (DEPTHS, "DEPTH (same budget)"),
+    "biases": (BIASES, "INDUCTIVE BIAS"),
+    "crossover": (OPERATORS, "CROSSOVER (harness-wide)"),
+}
+
 
 def parameter_count(variant: Variant, cfg: SimulationConfig, inputs: int) -> int:
     return build_brain(variant.ref(), inputs, np.random.default_rng(0)).genome_size
@@ -176,7 +195,19 @@ def main() -> None:
     parser.add_argument("--generations", type=int, default=40)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--population", type=int, default=100)
-    parser.add_argument("--out", type=Path, default=Path("outputs/ablation.json"))
+    parser.add_argument(
+        "--group",
+        nargs="+",
+        default=["all"],
+        choices=[*GROUPS, "all"],
+        help="which questions to run; one group at a time keeps a run short",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="results file (default: outputs/ablation_<groups>.json)",
+    )
     parser.add_argument(
         "--workers",
         type=int,
@@ -185,20 +216,25 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    chosen = list(GROUPS) if "all" in args.group else args.group
+    groups = [(GROUPS[name][0], GROUPS[name][1]) for name in chosen]
+    selected = [variant for group, _ in groups for variant in group]
+    out = args.out or Path("outputs") / f"ablation_{'_'.join(chosen)}.json"
+
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     base = SimulationConfig()
     inputs = base.car.num_sensors + 1
 
     jobs = [
         (variant, seed, args.generations, args.population)
-        for variant in VARIANTS
+        for variant in selected
         for seed in range(1, args.seeds + 1)
     ]
     print(
-        f"{len(VARIANTS)} variants x {args.seeds} seeds x {args.generations} generations, "
-        f"population {args.population}"
+        f"{', '.join(chosen)}: {len(selected)} variants x {args.seeds} seeds x "
+        f"{args.generations} generations, population {args.population}"
     )
-    print(f"{len(jobs)} runs across {args.workers} worker processes\n")
+    print(f"{len(jobs)} runs across {args.workers} worker processes -> {out}\n")
 
     started = time.time()
     with multiprocessing.Pool(args.workers) as pool:
@@ -215,12 +251,6 @@ def main() -> None:
     # only the seed changed, so a table of medians invites a conclusion the data
     # does not support. If the spreads overlap, the difference is not measured.
     results = []
-    groups = (
-        (SIZES, "SIZE (one layer)"),
-        (DEPTHS, "DEPTH (same budget)"),
-        (BIASES, "INDUCTIVE BIAS"),
-        (OPERATORS, "CROSSOVER (harness-wide)"),
-    )
     for group, title in groups:
         header = (
             f"{title:<16} {'params':>6} {'train med':>10} "
@@ -259,9 +289,9 @@ def main() -> None:
             f"variants. Use --seeds 7 or more before concluding anything."
         )
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(results, indent=2))
-    print(f"\nFull results in {args.out}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(results, indent=2))
+    print(f"\nFull results in {out}")
 
 
 if __name__ == "__main__":
