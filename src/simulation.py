@@ -100,7 +100,8 @@ class Simulation:
         shown: int = 10,
         entries: Optional[Sequence[BrainRef]] = None,
         record: Optional[Path] = None,
-        record_every: int = 30,
+        record_every: int = 3,
+        record_clip: float = 3.0,
         throttle: bool = True,
     ) -> None:
         """`entries` overrides who is on the grid.
@@ -157,10 +158,16 @@ class Simulation:
             Analysis(layout.window[0], layout.strip) if render and layout.strip else None
         )
         self.recorder = (
-            Recorder(record, layout.window, every=record_every)
+            Recorder(record, layout.window, fps=cfg.fps)
             if render and record is not None
             else None
         )
+        # Which generations are filmed, and for how long. Every frame of a clip
+        # is kept and played at the rate it was drawn, so the driving inside one
+        # is exactly what it looked like; the video cuts between clips instead.
+        self._film_every = max(1, record_every)
+        self._film_frames = max(1, int(record_clip * cfg.fps))
+        self._film_all = False  # a race is short enough to keep whole
         # Without a window to watch there is no reason to hold 60 frames a
         # second, and holding it would make a recording take as long as the
         # training takes to watch.
@@ -221,10 +228,8 @@ class Simulation:
 
     def close(self) -> None:
         if self.recorder is not None:
-            written = self.recorder.close()
+            self.recorder.close()  # it reports the file itself
             self.recorder = None
-            if written is not None:
-                logger.info("Video: %s", written)
         if self._pool is not None:
             self._pool.close()
             self._pool.join()
@@ -334,8 +339,19 @@ class Simulation:
             else None
         )
         self.renderer.present(panel, strip, throttle=self._throttle)
-        if self.recorder is not None:
+        if self.recorder is not None and self._filming(generation, frame):
             self.recorder.capture(self.renderer.screen)
+
+    def _filming(self, generation: int, frame: int) -> bool:
+        """Whether this frame belongs in the video.
+
+        Not one frame in N: at that spacing a car crosses a corner between two
+        frames and the motion is gone. Whole generations are left out instead,
+        and the ones kept are kept unthinned.
+        """
+        if self._film_all:
+            return True
+        return (generation - 1) % self._film_every == 0 and frame < self._film_frames
 
     def _stats(self, generation: int) -> List[Tuple[str, str]]:
         """Numbers about the run that no curve here shows.
@@ -516,6 +532,7 @@ class Simulation:
         The circuit is `gauntlet` unless told otherwise: nobody trained on it, so
         finishing it shows general driving rather than a memorised layout.
         """
+        self._film_all = True  # one lap of one circuit: nothing to leave out
         circuit = track or Track(race_track())
         # The race is one fixed test: no island rotation, no random start.
         stage = Stage(circuit, 0, 0, None, self.frame_budget(circuit))

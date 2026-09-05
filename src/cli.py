@@ -25,10 +25,18 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--record-every",
         type=int,
-        default=30,
-        help="keep one frame in N (default 30, i.e. two per simulated second). "
-        "A 120-generation run is ~360 000 frames, so this is what decides "
-        "whether the video is minutes or hours.",
+        default=3,
+        help="film one generation in N (default 3). Frames are never thinned — "
+        "that would replace motion with a slideshow — so this and --record-clip "
+        "are what decide the video's length.",
+    )
+    parser.add_argument(
+        "--record-clip",
+        type=float,
+        default=3.0,
+        help="seconds filmed of each circuit, in each filmed generation "
+        "(default 3.0). Length = generations / every x circuits x clip, so the "
+        "defaults turn a 120-generation run into six minutes.",
     )
 
 

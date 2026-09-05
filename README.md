@@ -65,7 +65,8 @@ pip install -r requirements.txt
 python train.py                                # dashboard, everyone at once (ESC to quit)
 python train.py --headless --generations 200   # fast training, all cores
 python train.py --shown 20                     # draw more cars per entrant
-python train.py --headless --record run.mp4    # video of the whole run, fast
+python train.py --headless --record run.mp4    # 6-minute video of the run
+python race.py --headless --record race.mp4    # the race, filmed whole
 python race.py                                 # the race, on the unseen circuit
 python race.py --track 1                       # the same grid on a training circuit
 python -m pytest tests -q                      # tests
@@ -79,20 +80,33 @@ Each champion is written to `outputs/<name>.npz`, which is what `race.py` reads.
 python train.py --headless --record outputs/run.mp4
 ```
 
-Frames go straight down a pipe into ffmpeg, so a run leaves one mp4 rather than
-a directory of PNGs — 360 000 frames as images is gigabytes on disk for a file
-that ends up around 30 MB.
+A hundred minutes of training cannot become six minutes of video by keeping one
+frame in twenty: the cars then jump a whole second between frames and the
+motion — the only thing worth watching — is gone. So the compression comes from
+leaving whole stretches out, not from thinning the ones kept.
 
-Two things make the result watchable. `--record-every` keeps one frame in N (30
-by default, two per simulated second), which turns a hundred minutes of
-training into about six and a half minutes of video with every generation still
-in it. And `--headless` lifts the 60 fps cap, because with no window on screen
-there is nothing to hold the loop back — the recording takes as long as the
-drawing takes, not as long as watching would have. Recorded that way it also
-gets the full 1380x980 layout rather than one shrunk to fit a monitor it is
-never shown on.
+The run is filmed in **clips**. Every third generation, the first three seconds
+of each circuit are recorded at the full 60 fps and played back at 60 fps, so
+the driving inside a clip is exactly what it looked like; between clips the
+video cuts forward. The panel carries the generation number, so the cuts read
+as progress. Each clip starts on the line, which makes the same situation
+directly comparable from generation 1 to generation 120.
 
-`--record` works with the window open too; it just runs at watching speed.
+    length = generations / --record-every x 3 circuits x --record-clip
+
+At the defaults a 120-generation run is 40 clips per circuit, 18 000 frames,
+**six minutes at 60 fps, about 60 MB**. `x264` at `crf 16`, preset `slow`,
+`yuv420p` and `+faststart`: thin lines and small text are what h264 destroys
+first and they are most of this picture, so it is encoded for screen capture
+rather than for camera footage.
+
+`--headless` lifts the 60 fps cap — with no window there is nothing to hold the
+loop back, so the recording takes as long as the drawing does rather than as
+long as watching would have — and gives the full 1380x980 layout instead of one
+shrunk to fit a monitor it is never shown on. `--record` works with the window
+open too; it just runs at watching speed.
+
+A race is one lap of one circuit, so `race.py --record` films it whole.
 
 ## Adding a competitor
 

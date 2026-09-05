@@ -2,6 +2,7 @@
 
     python race.py                        # the race, on `gauntlet`
     python race.py --track 1              # the same grid on a training circuit
+    python race.py --headless --record outputs/race.mp4
 
 Driving a layout that was not in the training set is the difference between
 having learned to drive and having memorised three tracks. The entrants are
@@ -10,6 +11,7 @@ whichever files are in `src/brains/` and have a champion in `outputs/`.
 
 import argparse
 import logging
+import os
 
 from src.cli import add_common_arguments, build_config, setup_logging
 from src.simulation import Simulation, format_results
@@ -32,7 +34,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     setup_logging()
     args = parse_args()
-    simulation = Simulation(build_config(args), render=not args.headless)
+    # A race is one lap of one circuit, so it is filmed whole — no clips, no
+    # cuts. Headless just means it is drawn without a window and encoded as
+    # fast as it draws.
+    recording_headless = args.headless and args.record is not None
+    if recording_headless:
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    simulation = Simulation(
+        build_config(args),
+        render=not args.headless or recording_headless,
+        record=args.record,
+        throttle=not recording_headless,
+    )
     track = simulation.tracks[args.track] if args.track is not None else None
     results = simulation.race(track)
     logger.info("Classification:\n%s", format_results(results))

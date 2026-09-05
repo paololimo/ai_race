@@ -55,6 +55,7 @@ def main() -> None:
         shown=args.shown,
         record=args.record,
         record_every=args.record_every,
+        record_clip=args.record_clip,
         throttle=not recording_headless,
     )
     simulation.train()
