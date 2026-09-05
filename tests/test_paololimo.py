@@ -36,8 +36,10 @@ def test_genome_roundtrip(rng: np.random.Generator) -> None:
     net = NeuralNetwork(INPUTS, SPEC, rng)
     genome = net.get_genome()
     cfg = NetworkConfig()
-    (hidden,) = cfg.hidden_sizes
-    expected = INPUTS * hidden + hidden + hidden * 2 + 2  # weights, biases, readout
+    widths = (INPUTS, *cfg.hidden_sizes, 2)
+    # A weight matrix and a bias per step of the chain, plus the skip's own
+    # matrix straight from the inputs to the controls.
+    expected = sum(a * b + b for a, b in zip(widths, widths[1:]))
     if cfg.skip:
         expected += INPUTS * 2
     assert genome.size == expected
@@ -173,14 +175,17 @@ def test_the_default_fits_the_search_budget() -> None:
     100 genomes over 120 generations is 12 000 evaluations, and a
     derivative-free search wants roughly 100 to 1000 of them per parameter. The
     previous default asked for 366 parameters, which needs 37 000 at the most
-    generous end; this one asks for 150. If someone widens the network again
+    generous end; this one asks for 160. If someone widens the network again
     without widening the budget, this is the test that should stop them.
     """
     cfg = NetworkConfig()
     net = NeuralNetwork(INPUTS, spec_from_config(cfg), np.random.default_rng(0))
 
-    assert net.genome_size == 150
-    assert len(cfg.hidden_sizes) == 1, "one hidden layer, not two"
+    assert net.genome_size == 160
+    # A funnel: wider than the input to form features across the ray fan, then
+    # narrow to compose them. Depth is affordable only at these widths.
+    assert cfg.hidden_sizes == (10, 4)
+    assert cfg.hidden_sizes[0] > INPUTS > cfg.hidden_sizes[1]
     assert cfg.skip, "the linear path evolution starts from"
     assert cfg.symmetric, "the mirror symmetry the circuits actually have"
     assert not cfg.decoupled, "a stack per control doubles the genome"

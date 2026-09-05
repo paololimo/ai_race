@@ -19,15 +19,20 @@ from src.brains import Topology, register_brain
 class NetworkConfig:
     """Architecture of this entrant. Overridable through the checkpoint spec."""
 
-    # One hidden layer of twelve, not two of fourteen. The budget is 100 genomes
-    # over 120 generations — 12 000 evaluations — and a derivative-free search
-    # wants somewhere between 100 and 1000 evaluations per parameter. At 366
-    # parameters that asks for 37 000 at the low end: the old default was not
-    # short of capacity, it was short of the search to fill it. 150 parameters
-    # fits the budget. Depth was the closer call — two layers of seven cost the
-    # same 135 — and went to width because the first layer is what reads the ray
-    # fan, and seven detectors over seven rays is tight.
-    hidden_sizes: Tuple[int, ...] = (12,)
+    # Ten then four: 160 parameters, ten more than one layer of twelve. The
+    # budget is 100 genomes over 120 generations — 12 000 evaluations — and a
+    # derivative-free search wants 100 to 1000 of them per parameter, which is
+    # why the old 8 → 14 → 14 → 2 at 366 was never searched, only sampled. Two
+    # layers at this width cost almost nothing against one, so the choice is
+    # about shape rather than budget: reading the ray fan is comparing each ray
+    # against its neighbours to find the gap, and *then* weighing that against
+    # own speed to set steering and braking. One matrix has to do both at once;
+    # two do them in turn. Hence a funnel, 8 → 10 → 4 → 2: the first layer is
+    # wider than the input because it forms features across the whole fan, and
+    # the second is narrow because it composes a judgement already made — and
+    # because the linear skip carries the coarse policy to the controls anyway,
+    # leaving these four units only the nonlinear correction to it.
+    hidden_sizes: Tuple[int, ...] = (10, 4)
     output_size: int = 2
     weight_init_scale: float = 1.0
     # Impose left/right symmetry instead of letting the weights discover it. The

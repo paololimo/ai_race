@@ -127,7 +127,7 @@ BIASES: Tuple[Variant, ...] = (
 # so recombination behaves closer to heavy mutation than to inheritance. Cutting
 # the vector into runs keeps co-adapted groups together; dropping crossover
 # altogether leaves the work to mutation, which on small genomes is often no
-# worse. Held at the default architecture so only the operator moves.
+# worse. Held at one fixed architecture so only the operator moves.
 OPERATORS: Tuple[Variant, ...] = (
     Variant("uniform", crossover="uniform"),
     Variant("one-point", crossover="one-point"),
