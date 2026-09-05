@@ -71,35 +71,50 @@ class Variant:
         return BrainRef("paololimo", spec_from_config(cfg))
 
 
-# Architecture, one question per group.
-#
-# Size: is the default too big to search in the generations available? The
-# earlier run hinted that it is, but on three seeds the hint means nothing.
-#
-# Symmetry: the problem is mirror-symmetric, so imposing the symmetry halves the
-# search without losing capacity — if the halving is worth more than the two
-# extra forward passes it costs.
-#
-# Skip: a direct input-to-output path gives evolution a linear controller it can
-# refine immediately, instead of one it must first build through two tanh layers.
-#
-# Decoupling: separate stacks per control, so a mutation that improves braking
-# lands in weights steering never reads and cannot damage it.
-ARCHITECTURES: Tuple[Variant, ...] = (
-    Variant("linear", ()),
-    Variant("8", (8,)),
-    Variant("14", (14,)),
-    Variant("14-14", (14, 14)),  # the current default
-    Variant("24-24", (24, 24)),
-    Variant("14 sym", (14,), symmetric=True),
-    Variant("14-14 sym", (14, 14), symmetric=True),
-    Variant("14 skip", (14,), skip=True),
-    Variant("14-14 skip", (14, 14), skip=True),
-    Variant("14 split", (14,), decoupled=True),
-    Variant("14-14 split", (14, 14), decoupled=True),
-    Variant("14 all", (14,), symmetric=True, skip=True, decoupled=True),
-    Variant("14-14 all", (14, 14), symmetric=True, skip=True, decoupled=True),
+# How big? A ladder that roughly doubles the parameter count at each rung, all
+# on one hidden layer so depth is not varying at the same time. Doubling rather
+# than stepping by a few neurons because the seed-to-seed spread on this problem
+# is enormous: the same architecture has scored 0.04 and 3.05 laps. Two rungs
+# 40% apart — 14 against 20, say — cannot be told apart at any seed count worth
+# paying for, so they would buy a row of the table and no knowledge.
+SIZES: Tuple[Variant, ...] = (
+    Variant("linear", ()),          #  18 parameters
+    Variant("4", (4,)),             #  46
+    Variant("8", (8,)),             #  90
+    Variant("14", (14,)),           # 156
+    Variant("24", (24,)),           # 266
+    Variant("40", (40,)),           # 442
 )
+
+# Does depth pay? Only comparable at a fixed parameter count, or the answer is
+# confounded by size. Each pair below is one wide layer against two narrow ones
+# with the same budget, so the only thing that differs is the shape.
+DEPTHS: Tuple[Variant, ...] = (
+    Variant("20 wide", (20,)),        # 222 parameters
+    Variant("10-10 deep", (10, 10)),  # 222 — the same budget, split in two
+    Variant("33 wide", (33,)),        # 365
+    Variant("14-14 deep", (14, 14)),  # 366 — the same, and the current default
+)
+
+# Three inductive biases, each on one base so the bias is the only thing moving.
+#
+# Symmetry: the problem is mirror-symmetric, so imposing it halves the search
+# without losing capacity — if that is worth the two extra forward passes.
+#
+# Skip: a direct input-to-output path hands evolution a linear controller to
+# refine from the first generation, rather than one it must build through the
+# hidden layers before anything works at all.
+#
+# Decoupling: a stack per control, so a mutation that improves braking lands in
+# weights steering never reads and cannot damage it.
+BIASES: Tuple[Variant, ...] = (
+    Variant("14 sym", (14,), symmetric=True),
+    Variant("14 skip", (14,), skip=True),
+    Variant("14 split", (14,), decoupled=True),
+    Variant("14 all", (14,), symmetric=True, skip=True, decoupled=True),
+)
+
+ARCHITECTURES: Tuple[Variant, ...] = SIZES + DEPTHS + BIASES
 
 # Harness: uniform crossover splits a neuron's incoming weights between parents,
 # so recombination behaves closer to heavy mutation than to inheritance. Cutting
@@ -200,7 +215,13 @@ def main() -> None:
     # only the seed changed, so a table of medians invites a conclusion the data
     # does not support. If the spreads overlap, the difference is not measured.
     results = []
-    for group, title in ((ARCHITECTURES, "ARCHITECTURE"), (OPERATORS, "CROSSOVER (harness-wide)")):
+    groups = (
+        (SIZES, "SIZE (one layer)"),
+        (DEPTHS, "DEPTH (same budget)"),
+        (BIASES, "INDUCTIVE BIAS"),
+        (OPERATORS, "CROSSOVER (harness-wide)"),
+    )
+    for group, title in groups:
         header = (
             f"{title:<16} {'params':>6} {'train med':>10} "
             f"{'race med':>9} {'race range':>14}  {'per seed'}"
