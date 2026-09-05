@@ -553,140 +553,248 @@
 </section>
 
 <section>
-  <h2><span class="num">07</span>What the instruments show</h2>
+  <h2><span class="num">07</span>What the instruments showed, and what they later corrected</h2>
   <div class="col">
     <p>
-      The window carries a strip of analyses under the circuit: progress, genetic
-      spread, and best-per-circuit. The third of those was built because the
-      per-circuit scores were being aggregated into one fitness before anything could
-      look at them. It immediately showed something no fitness number could.
+      The strip under the circuit carries progress, genetic spread and
+      best-per-circuit. The third was built because the per-circuit scores were
+      being aggregated into one fitness before anything could look at them. It
+      immediately showed something no fitness number could — and then, seventeen
+      generations later, corrected a conclusion drawn from its own first
+      reading.
     </p>
   </div>
   <div class="scroller">
     <table>
-      <caption>Best laps per circuit, generation 23 of 120 — bar length to one scale</caption>
+      <caption>Best laps per circuit, generation 23 of 120</caption>
       <thead>
-        <tr>
-          <th>Entrant</th>
-          <th class="num">serpentine</th><th></th>
-          <th class="num">grid-city</th><th></th>
-          <th class="num">speedway</th><th></th>
-        </tr>
+        <tr><th>Entrant</th><th class="num">serpentine</th><th class="num">grid-city</th><th class="num">speedway</th></tr>
       </thead>
       <tbody>
-        <tr class="r-paololimo">
-          <td><span class="who r-paololimo">paololimo</span></td>
-          <td class="num">1.81</td><td class="barcell"><span class="bar faded" style="width:55%"></span></td>
-          <td class="num">1.06</td><td class="barcell"><span class="bar" style="width:32%"></span></td>
-          <td class="num">2.99</td><td class="barcell"><span class="bar faded" style="width:92%"></span></td>
-        </tr>
-        <tr class="r-gemini">
-          <td><span class="who r-gemini">gemini</span></td>
-          <td class="num">3.03</td><td class="barcell"><span class="bar faded" style="width:93%"></span></td>
-          <td class="num">0.42</td><td class="barcell"><span class="bar" style="width:13%"></span></td>
-          <td class="num">3.24</td><td class="barcell"><span class="bar faded" style="width:99%"></span></td>
-        </tr>
-        <tr class="r-claude">
-          <td><span class="who r-claude">claude</span></td>
-          <td class="num">2.41</td><td class="barcell"><span class="bar faded" style="width:74%"></span></td>
-          <td class="num">0.60</td><td class="barcell"><span class="bar" style="width:18%"></span></td>
-          <td class="num">2.54</td><td class="barcell"><span class="bar faded" style="width:78%"></span></td>
-        </tr>
-        <tr class="r-codex">
-          <td><span class="who r-codex">codex</span></td>
-          <td class="num">0.46</td><td class="barcell"><span class="bar faded" style="width:14%"></span></td>
-          <td class="num">0.41</td><td class="barcell"><span class="bar" style="width:13%"></span></td>
-          <td class="num">3.26</td><td class="barcell"><span class="bar faded" style="width:100%"></span></td>
-        </tr>
+        <tr><td><span class="who r-paololimo">paololimo</span></td><td class="num">1.81</td><td class="num">1.06</td><td class="num">2.99</td></tr>
+        <tr><td><span class="who r-gemini">gemini</span></td><td class="num">3.03</td><td class="num">0.42</td><td class="num">3.24</td></tr>
+        <tr><td><span class="who r-claude">claude</span></td><td class="num">2.41</td><td class="num">0.60</td><td class="num">2.54</td></tr>
+        <tr><td><span class="who r-codex">codex</span></td><td class="num">0.46</td><td class="num">0.41</td><td class="num">3.26</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col">
+    <p>
+      Every entrant was weakest on grid-city, and since fitness across circuits
+      is <code>worst + 0.35 × mean</code>, grid-city led all four numbers. The
+      incumbent's 1.06 there was two and a half times the next best. Inverting
+      those laps through a geometric survival model put its per-corner
+      reliability at 93% against the field's 83%.
+    </p>
+    <p>
+      <strong>That reading did not survive.</strong> It was taken 19% of the way
+      through a run, and by generation 40 the ranking had turned over
+      completely.
+    </p>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>Generation 40 — and the incumbent is no longer leading anywhere</caption>
+      <thead>
+        <tr><th>Entrant</th><th class="num">serpentine</th><th class="num">grid-city</th><th class="num">speedway</th><th class="num">fitness</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="who r-gemini">gemini</span></td><td class="num">2.92</td><td class="num">2.72</td><td class="num">3.22</td><td class="num">3.72</td></tr>
+        <tr><td><span class="who r-paololimo">paololimo</span></td><td class="num">2.37</td><td class="num">2.09</td><td class="num">2.85</td><td class="num">2.83</td></tr>
+        <tr><td><span class="who r-claude">claude</span></td><td class="num">0.02</td><td class="num">1.90</td><td class="num">2.76</td><td class="num">2.50</td></tr>
+        <tr><td><span class="who r-codex">codex</span></td><td class="num">0.73</td><td class="num">0.23</td><td class="num">3.24</td><td class="num">1.00</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="finding">
-    <h3>One circuit out of three is deciding the race</h3>
+    <h3>Not memorisation. Specialisation — and the fitness function asked for it</h3>
     <p>
-      Fitness across circuits is <code>worst + 0.35 × mean</code>, so the lowest bar
-      leads the number. <strong>All four entrants are weakest on grid-city</strong> —
-      it is the binding constraint for every one of them, and the incumbent's 1.06
-      there is two and a half times the next best.
+      The obvious worry about an entrant that dominates one circuit is that it
+      has learnt that circuit by heart. It cannot have: the networks are
+      memoryless, seeing only the current rays, with no idea where on the lap
+      they are or what came before. A sequence of corners is not something they
+      can encode. The start point also moves every generation and the islands
+      rotate through four layouts.
     </p>
     <p>
-      Meanwhile speedway is saturated. The frame budget grants three laps at top
-      speed, and three entrants are at or past it — a car cutting inside the
-      centreline can exceed 3.00. A circuit everyone maxes out separates nobody: of
-      three training circuits, one contributes nothing to selection, one partly
-      discriminates, and one decides everything.
+      What it can do is specialise to one circuit's distribution of sensor
+      states — and at generation 23 that is exactly what the numbers showed.
+      The incumbent was first on grid-city and <em>third</em> on both of the
+      others. Not better in general: better there. And
+      <code>worst + 0.35 × mean</code> rewards precisely that, since it leads
+      with the circuit an entrant is worst on. The network was answering the
+      objective correctly. The objective is not the race, which is one lap of
+      one circuit with no worst-case term at all.
     </p>
   </div>
+</section>
 
+<section>
+  <h2><span class="num">08</span>Three circuits, only one of which was doing anything</h2>
   <div class="col">
     <p>
-      Genetic spread at generation 23 sits at 0.58 of its starting value and is
-      falling smoothly — the populations are converging at a healthy rate, not
-      collapsing. The widest genome, codex at 344, decays slowest, which is what more
-      genes to diverge over should look like.
+      The same breakdown exposed the training set. Counting corners tight enough
+      to force a car below half of top speed — the turning radius is
+      <code>speed / 4.5°</code>, so this is geometry, not judgement — the four
+      circuits were not four problems:
+    </p>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>Corners forcing below half speed, and the share of a lap spent slowed</caption>
+      <thead>
+        <tr><th>Circuit</th><th class="num">corners before</th><th class="num">after</th><th class="num">lap slowed before</th><th class="num">after</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>serpentine</td><td class="num">1</td><td class="num">2</td><td class="num">5%</td><td class="num">14%</td></tr>
+        <tr><td>grid-city</td><td class="num">12</td><td class="num">8</td><td class="num">16%</td><td class="num">12%</td></tr>
+        <tr><td>speedway</td><td class="num">1</td><td class="num">6</td><td class="num">3%</td><td class="num">13%</td></tr>
+        <tr><td>gauntlet <em>(race)</em></td><td class="num">1</td><td class="num">5</td><td class="num">6%</td><td class="num">21%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col">
+    <p>
+      Grid-city was the only circuit that discriminated. Speedway was saturated
+      — three entrants at or past the three-lap frame budget, which separates
+      nobody. And the race circuit, the one every entrant is finally ranked on,
+      was tied for easiest: the finals were the least demanding thing on the
+      calendar.
+    </p>
+    <p>
+      Each fix is the geometry rather than a difficulty dial. A hairpin's radius
+      is half the lane spacing, so serpentine's were 75 px and takeable at 98%
+      of top speed; six lanes at 98 px spacing fixes that but needs a road so
+      narrow that all five islands are silently skipped, so the corners come
+      from the straights instead — six bumps rather than three, two smoothing
+      passes rather than four so they stay corners. Speedway's chicane was drawn
+      with real direction changes and then rounded away by three Chaikin passes;
+      one pass leaves it as drawn. Gauntlet went from nine peaks at 72 px to
+      eleven at 90.
+    </p>
+    <p>
+      Grid-city lost four of its twelve right angles — in the skeleton, not by
+      smoothing, because square corners are its whole character.
+      <strong>Not because twelve was impossible.</strong> That was the first
+      conclusion, from the compound odds: at 90% per corner a twelve-corner lap
+      survives 28% of the time. The arithmetic was right and the inference was
+      not — by generation 40 an entrant was lapping it at 2.72. Twelve corners
+      was learnable, just far more slowly than the rest, and while that lasted
+      the compound odds ranked the entrants rather than their driving.
     </p>
   </div>
 </section>
 
 <section>
   <div class="col">
-    <h2><span class="num">08</span>Still open</h2>
+    <h2><span class="num">09</span>Still open</h2>
     <ul class="open">
       <li>
-        <strong>120 generations or 250?</strong> At 160 parameters the current budget
-        is 75 evaluations per parameter, already under the rule of thumb's floor.
-        Doubling it searches what is already there properly — but it lifts the
-        constraint most for codex, which at 344 parameters is the only entrant the
-        budget is really binding. That is a choice about what the race should measure:
-        who designed for the budget, or whose architecture has the higher ceiling.
+        <strong>120 generations or 250?</strong> At 160 parameters the current
+        budget is 75 evaluations per parameter, already under the rule of
+        thumb's floor. Doubling it searches what is there properly — but it
+        lifts the constraint most for codex, the only entrant whose 344
+        parameters the budget really binds. A choice about what the race should
+        measure: who designed for the budget, or whose architecture has the
+        higher ceiling.
       </li>
       <li>
-        <strong>Is speedway worth keeping as it is?</strong> Everyone maxes it. Either
-        its frame budget rises or it is doing nothing but adding runtime.
+        <strong>Does the rebalance hold?</strong> The circuits are now matched
+        on geometry — 2, 8, 6 and 5 hard corners, 12–21% of each lap slowed —
+        but nothing has been trained on them yet. If one still dominates the
+        fitness, the same breakdown will say so within twenty generations.
       </li>
       <li>
-        <strong>Depth against width</strong> is now a genuine two-horse comparison —
-        160 parameters in a funnel against 150 in one wide layer, everything else
-        held. The run answers it; no further experiment is needed.
+        <strong>Depth against width</strong> is a genuine two-horse comparison:
+        160 parameters in a funnel against 150 in one wide layer, same symmetry,
+        same skip, everything else held. The run answers it.
       </li>
     </ul>
   </div>
 </section>
 
 <section>
-  <h2><span class="num">09</span>Errors, and what they cost</h2>
+  <h2><span class="num">10</span>Errors, and what they cost</h2>
   <div class="col">
     <p>
-      Kept because a design record that lists only the decisions that worked is not a
-      record, and because several of these were plausible-sounding arguments that
-      measurement contradicted.
+      Kept because a design record that lists only the decisions that worked is
+      not a record. Several of these were plausible arguments that measurement
+      later contradicted, and two are conclusions in this document's own earlier
+      version.
     </p>
   </div>
   <ul class="errors">
     <li>
+      <span class="tag">overread</span>
+      <p class="what">A snapshot at 19% of a run was reported as a finding</p>
+      <p class="fix">
+        Generation 23 put the incumbent's per-corner reliability at 93% against
+        the field's 83%. By generation 40 another entrant led on all three
+        circuits. The estimate was sound; treating one generation of a
+        stochastic search as a result was not.
+      </p>
+    </li>
+    <li>
+      <span class="tag">overread</span>
+      <p class="what">Grid-city was called near-impossible</p>
+      <p class="fix">
+        Twelve corners at 90% each is a 28% lap — correct arithmetic describing
+        the opening phase, not the circuit. An entrant reached 2.72 laps on it.
+        The rebalance went from six corners back to eight on that evidence.
+      </p>
+    </li>
+    <li>
+      <span class="tag">×60</span>
+      <p class="what">A full recording was costed at 71 hours</p>
+      <p class="fix">
+        257 280 frames at 60 fps is 71 <em>minutes</em>. The error made keeping
+        every frame look prohibitive and produced a clip-and-cut system to avoid
+        a problem that did not exist. Recording everything is now the default.
+      </p>
+    </li>
+    <li>
+      <span class="tag">design</span>
+      <p class="what">The first recorder kept one frame in thirty</p>
+      <p class="fix">
+        At 60 fps that is a car crossing an entire corner between frames: a
+        slideshow, not a video. True at capture and equally true of a 20×
+        playback speed-up — but 4–6× is smooth, which is the range anyone
+        actually wants, and generalising the extreme to all of it was wrong.
+      </p>
+    </li>
+    <li>
+      <span class="tag">caught</span>
+      <p class="what">A six-lane serpentine silently dropped all five islands</p>
+      <p class="fix">
+        A road narrow enough for 98 px lane spacing leaves 18 px for an island
+        against a 26 px corridor each side, so every one was skipped without a
+        word. Found by counting them before shipping, not after.
+      </p>
+    </li>
+    <li>
       <span class="tag">destroyed</span>
       <p class="what">A smoke test overwrote the trained champion</p>
       <p class="fix">
-        <code>outputs/</code> is gitignored, so no copy existed. Retrained: 3.19 laps
-        against the 3.23 in the README.
+        <code>outputs/</code> is gitignored, so no copy existed. Retrained: 3.19
+        laps against the 3.23 in the README.
       </p>
     </li>
     <li>
       <span class="tag">parity</span>
       <p class="what">Start points were drawn from the genome generator</p>
       <p class="fix">
-        Genome size decided how many numbers had been consumed, so differently sized
-        entrants met different starts from generation 1. Fixed with a dedicated
-        stream, proved before and after.
+        Genome size decided how many numbers had been consumed, so differently
+        sized entrants met different starts from generation 1. Fixed with a
+        dedicated stream, proved before and after.
       </p>
     </li>
     <li>
       <span class="tag">false</span>
       <p class="what">The brief claimed adjacent genes help crossover</p>
       <p class="fix">
-        They do not: crossover is uniform, position is irrelevant. One entrant had
-        already designed contiguous 14-gene blocks around the claim.
+        They do not: crossover is uniform, position is irrelevant. One entrant
+        had already designed contiguous 14-gene blocks around the claim.
       </p>
     </li>
     <li>
@@ -698,61 +806,63 @@
       <span class="tag">crash</span>
       <p class="what">The panel read attributes only the incumbent had</p>
       <p class="fix">
-        <code>layer_sizes</code> and <code>weights</code>, so any competitor took the
-        window down on the first frame it led. Replaced by <code>describe()</code>
-        with a measured-response fallback, then a full exception guard.
+        <code>layer_sizes</code> and <code>weights</code>, so any competitor
+        took the window down on the first frame it led. Replaced by
+        <code>describe()</code> with a measured-response fallback.
       </p>
     </li>
     <li>
       <span class="tag">wrong</span>
       <p class="what">Advice to close the editor to free CPU</p>
       <p class="fix">
-        The ablation was running inside that editor's integrated terminal. Closing it
-        would have killed the run.
+        The ablation was running inside that editor's integrated terminal.
+        Closing it would have killed the run.
       </p>
     </li>
     <li>
       <span class="tag">wrong</span>
       <p class="what">A refactor was skipped for a reason that did not hold</p>
       <p class="fix">
-        The claim was that float32 → float64 accumulation would shift every result.
-        Measured: the clearance field holds integers 0–49, accumulation is exact in
-        both widths, zero divergences in 3924 casts. Taking it was a 2.34× speed-up.
+        The claim was that float32 → float64 accumulation would shift every
+        result. Measured: the clearance field holds integers 0–49, accumulation
+        is exact in both widths, zero divergences in 3924 casts. Taking it was a
+        2.34× speed-up.
       </p>
     </li>
     <li>
       <span class="tag">removed</span>
       <p class="what">The per-generation curve was deleted on a bad argument</p>
       <p class="fix">
-        "They all move together" is true but not a reason: the differences between
-        those lines are exactly where one entrant handles a hard draw better than
-        another. Restored, faint, beneath the running maximum.
+        "They all move together" is true but not a reason: the differences
+        between those lines are exactly where one entrant handles a hard draw
+        better than another. Restored, faint, beneath the running maximum.
       </p>
     </li>
     <li>
       <span class="tag">invisible</span>
       <p class="what">Three new analyses shipped that nobody could see</p>
       <p class="fix">
-        The window asked for 980 px of height on a 900 px display, and the layout code
-        dropped the strip rather than shrinking anything. The circuit now scales to
-        make room for it.
+        The window asked for 980 px of height on a 900 px display, and the
+        layout dropped the strip rather than shrinking anything. The circuit now
+        scales to make room for it.
       </p>
     </li>
     <li>
       <span class="tag">counting</span>
       <p class="what">The time remaining climbed instead of falling</p>
       <p class="fix">
-        It divided elapsed time by the generation <em>in progress</em>: the numerator
-        grew while the divisor did not. Now the mean of the last five finished
-        generations.
+        It divided elapsed time by the generation <em>in progress</em>: the
+        numerator grew while the divisor did not. Now the mean of the last five
+        finished generations.
       </p>
     </li>
     <li>
       <span class="tag">luck</span>
       <p class="what">A layout test passed by coincidence</p>
       <p class="fix">
-        It asserted a difference between two screen sizes that happen to yield the
-        same scale, and survived only on the short-circuit of an <code>and</code>.
+        It asserted a difference between two screen sizes that happen to yield
+        the same scale, and survived only on the short-circuit of an
+        <code>and</code>.
       </p>
     </li>
   </ul>
