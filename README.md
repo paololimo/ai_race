@@ -36,6 +36,7 @@ src/
 ├── analysis.py         # strip: progress, genetic spread, per-circuit bars
 ├── simulation.py       # the generational loop, and the race
 ├── parallel.py         # population scoring across worker processes
+├── recorder.py         # frames piped into ffmpeg, for a video of a run
 └── cli.py              # shared arguments and configuration
 train.py                # train everyone on the three circuits
 race.py                 # take every champion to the unseen circuit
@@ -64,12 +65,34 @@ pip install -r requirements.txt
 python train.py                                # dashboard, everyone at once (ESC to quit)
 python train.py --headless --generations 200   # fast training, all cores
 python train.py --shown 20                     # draw more cars per entrant
+python train.py --headless --record run.mp4    # video of the whole run, fast
 python race.py                                 # the race, on the unseen circuit
 python race.py --track 1                       # the same grid on a training circuit
 python -m pytest tests -q                      # tests
 ```
 
 Each champion is written to `outputs/<name>.npz`, which is what `race.py` reads.
+
+## Recording it
+
+```bash
+python train.py --headless --record outputs/run.mp4
+```
+
+Frames go straight down a pipe into ffmpeg, so a run leaves one mp4 rather than
+a directory of PNGs — 360 000 frames as images is gigabytes on disk for a file
+that ends up around 30 MB.
+
+Two things make the result watchable. `--record-every` keeps one frame in N (30
+by default, two per simulated second), which turns a hundred minutes of
+training into about six and a half minutes of video with every generation still
+in it. And `--headless` lifts the 60 fps cap, because with no window on screen
+there is nothing to hold the loop back — the recording takes as long as the
+drawing takes, not as long as watching would have. Recorded that way it also
+gets the full 1380x980 layout rather than one shrunk to fit a monitor it is
+never shown on.
+
+`--record` works with the window open too; it just runs at watching speed.
 
 ## Adding a competitor
 

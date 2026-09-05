@@ -158,8 +158,18 @@ class Renderer:
             for endpoint in leader.sensor_endpoints:
                 pygame.draw.line(self.view, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
 
-    def present(self, panel: pygame.Surface, strip: Optional[pygame.Surface] = None) -> None:
-        """Scale the circuit into place, blit the panel and the strip, and flip."""
+    def present(
+        self,
+        panel: pygame.Surface,
+        strip: Optional[pygame.Surface] = None,
+        throttle: bool = True,
+    ) -> None:
+        """Scale the circuit into place, blit the panel and the strip, and flip.
+
+        `throttle` holds the loop to `fps`, which is what makes a window
+        watchable and what makes a headless recording take as long as watching
+        would have. Recording without a window turns it off.
+        """
         if self.layout.scale >= 1.0:
             self.screen.blit(self.view, (0, 0))
         else:
@@ -168,4 +178,5 @@ class Renderer:
         if strip is not None:
             self.screen.blit(strip, (0, self.layout.view[1]))
         pygame.display.flip()
-        self.clock.tick(self.fps)
+        if throttle:
+            self.clock.tick(self.fps)

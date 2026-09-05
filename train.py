@@ -3,6 +3,7 @@
     python train.py                       # dashboard, everyone training together
     python train.py --headless            # no window, all cores
     python train.py --generations 200
+    python train.py --headless --record outputs/training.mp4
 
 The entrants are whatever files are in `src/brains/`: adding one there puts it
 in the next run with no change here. Each champion is written to
@@ -39,11 +40,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     setup_logging()
     args = parse_args()
+    # Recording headless still needs everything drawn — just not shown. The
+    # dummy video driver gives pygame a surface with no window on it, and with
+    # no window there is no reason to hold sixty frames a second, so the
+    # recording takes as long as the drawing does rather than as long as
+    # watching would have.
+    recording_headless = args.headless and args.record is not None
+    if recording_headless:
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     simulation = Simulation(
         build_config(args),
-        render=not args.headless,
+        render=not args.headless or recording_headless,
         workers=args.workers,
         shown=args.shown,
+        record=args.record,
+        record_every=args.record_every,
+        throttle=not recording_headless,
     )
     simulation.train()
 

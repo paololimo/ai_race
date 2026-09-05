@@ -31,7 +31,8 @@ from src.config import SimulationConfig, race_track, track_variants
 from src.analysis import Analysis
 from src.dashboard import Dashboard, Entry, Series
 from src.genetic import mutation_sigma, next_generation
-from src.renderer import Renderer, fit_window
+from src.recorder import Recorder
+from src.renderer import Layout, Renderer, fit_window
 from src.track import Track
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,9 @@ class Simulation:
         workers: int = 1,
         shown: int = 10,
         entries: Optional[Sequence[BrainRef]] = None,
+        record: Optional[Path] = None,
+        record_every: int = 30,
+        throttle: bool = True,
     ) -> None:
         """`entries` overrides who is on the grid.
 
@@ -134,7 +138,15 @@ class Simulation:
         size = (first.width, first.height)
         # The window is asked for more than a small screen has, and shrinks to
         # what this display actually offers rather than running off the edge.
-        layout = fit_window(size, cfg.dashboard_width, cfg.strip_height)
+        # A recording with no window on screen has no display to fit into, so
+        # it gets the full-size layout rather than one shrunk for a monitor it
+        # is never shown on.
+        offscreen = record is not None and not throttle
+        layout = (
+            Layout(size, cfg.dashboard_width, cfg.strip_height, 1.0)
+            if offscreen
+            else fit_window(size, cfg.dashboard_width, cfg.strip_height)
+        )
         self.renderer = Renderer(size, layout, cfg.fps) if render else None
         # The panel stands beside the circuit, so it is as tall as the circuit
         # is drawn; the strip runs under both, so it is as wide as the window.
@@ -144,6 +156,15 @@ class Simulation:
         self.analysis = (
             Analysis(layout.window[0], layout.strip) if render and layout.strip else None
         )
+        self.recorder = (
+            Recorder(record, layout.window, every=record_every)
+            if render and record is not None
+            else None
+        )
+        # Without a window to watch there is no reason to hold 60 frames a
+        # second, and holding it would make a recording take as long as the
+        # training takes to watch.
+        self._throttle = throttle
         self._started = time.monotonic()
         # How long each finished generation took. The estimate must not be
         # divided by the generation in progress: within one, the elapsed time
@@ -199,6 +220,11 @@ class Simulation:
         return self._pool
 
     def close(self) -> None:
+        if self.recorder is not None:
+            written = self.recorder.close()
+            self.recorder = None
+            if written is not None:
+                logger.info("Video: %s", written)
         if self._pool is not None:
             self._pool.close()
             self._pool.join()
@@ -307,7 +333,9 @@ class Simulation:
             if self.analysis
             else None
         )
-        self.renderer.present(panel, strip)
+        self.renderer.present(panel, strip, throttle=self._throttle)
+        if self.recorder is not None:
+            self.recorder.capture(self.renderer.screen)
 
     def _stats(self, generation: int) -> List[Tuple[str, str]]:
         """Numbers about the run that no curve here shows.
