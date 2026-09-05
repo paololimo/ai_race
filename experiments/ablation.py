@@ -227,11 +227,19 @@ def main() -> None:
         for variant in selected
         for seed in range(1, args.seeds + 1)
     ]
-    print(
+    # Every print here is flushed. This runs for an hour or more, often with its
+    # output redirected to a file, and a buffered header is indistinguishable
+    # from a job that never started.
+    say = lambda line: print(line, flush=True)  # noqa: E731
+    say(
         f"{', '.join(chosen)}: {len(selected)} variants x {args.seeds} seeds x "
         f"{args.generations} generations, population {args.population}"
     )
-    print(f"{len(jobs)} runs across {args.workers} worker processes -> {out}\n")
+    say(f"{len(jobs)} runs across {args.workers} worker processes -> {out}")
+    say(
+        "Each run is a full training, so the first result lands only when one "
+        "finishes — expect several minutes of quiet before the list starts.\n"
+    )
 
     started = time.time()
     with multiprocessing.Pool(args.workers) as pool:
@@ -240,8 +248,15 @@ def main() -> None:
             pool.imap_unordered(run_job, jobs), start=1
         ):
             collected.setdefault(name, []).append((seed, fitness, laps))
-            print(f"  [{done}/{len(jobs)}] {name} seed {seed}: race {laps:.2f} laps", flush=True)
-    print(f"\nfinished in {(time.time() - started) / 60:.1f} minutes\n")
+            # Runs finish out of order and take unequal time, so the estimate is
+            # the mean so far rather than anything cleverer; it settles quickly.
+            elapsed = time.time() - started
+            remaining = elapsed / done * (len(jobs) - done)
+            say(
+                f"  [{done:>3}/{len(jobs)}] {name:<14} seed {seed}: {laps:5.2f} laps"
+                f"   {elapsed / 60:5.1f} min elapsed, ~{remaining / 60:.0f} left"
+            )
+    say(f"\nfinished in {(time.time() - started) / 60:.1f} minutes\n")
 
     # Median and spread together, never the median alone. A genetic algorithm on
     # this problem swings from 0.04 to 3.05 laps on the same architecture with
