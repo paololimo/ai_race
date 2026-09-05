@@ -1,0 +1,767 @@
+<title>Four Networks, One Circuit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  /* The palette is not invented: these are the exact tokens from
+     src/dashboard.py, so the document and the instrument it documents
+     are the same object seen twice. */
+  :root {
+    --ground: #f2f3f7;
+    --panel: #ffffff;
+    --edge: #d9dbe4;
+    --ink: #1a1c26;
+    --muted: #5c6276;
+    --accent: #9a5e00;
+    --accent-soft: #f6ead4;
+    --good: #1d7a4c;
+    --bad: #b03340;
+    --rule: #e3e5ec;
+
+    --paololimo: #b93030;
+    --gemini: #3660c8;
+    --codex: #6f7480;
+    --claude: #b56a13;
+
+    --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #121420;
+      --panel: #1c1f30;
+      --edge: #2b2f45;
+      --ink: #e8eaf5;
+      --muted: #8c92aa;
+      --accent: #ffb03c;
+      --accent-soft: #2a2415;
+      --good: #6edc96;
+      --bad: #eb646e;
+      --rule: #262a3d;
+
+      --paololimo: #d63e3e;
+      --gemini: #4678eb;
+      --codex: #c9ccd6;
+      --claude: #f0963c;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #121420;
+    --panel: #1c1f30;
+    --edge: #2b2f45;
+    --ink: #e8eaf5;
+    --muted: #8c92aa;
+    --accent: #ffb03c;
+    --accent-soft: #2a2415;
+    --good: #6edc96;
+    --bad: #eb646e;
+    --rule: #262a3d;
+
+    --paololimo: #d63e3e;
+    --gemini: #4678eb;
+    --codex: #c9ccd6;
+    --claude: #f0963c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 0 28px 96px; }
+  .col { max-width: 66ch; }
+
+  /* ---- masthead ---------------------------------------------------- */
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink);
+    padding: 56px 0 0;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.02;
+    letter-spacing: -0.025em;
+    margin: 14px 0 10px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    max-width: 60ch;
+    font-size: 19px;
+    color: var(--muted);
+    margin: 0 0 34px;
+  }
+
+  /* The run's own figures, in the instrument's own typeface. */
+  .telemetry {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+    margin-bottom: -1px;
+  }
+  .telemetry div { background: var(--ground); padding: 14px 16px 16px; }
+  .telemetry dt {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .telemetry dd {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 21px;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- structure --------------------------------------------------- */
+
+  section { margin-top: 64px; }
+  h2 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 27px;
+    letter-spacing: -0.015em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    display: block;
+    margin-bottom: 8px;
+  }
+  h3 {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: 0;
+    margin: 34px 0 4px;
+  }
+  p { margin: 0 0 16px; }
+  .col > p:first-of-type { margin-top: 14px; }
+  strong { font-weight: 600; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.87em;
+    background: var(--accent-soft);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ---- the ledger: almost every entry here is a change from X to Y --- */
+
+  .ledger {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0 20px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 13px;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 16px 0;
+    margin: 22px 0 20px;
+    max-width: 62ch;
+  }
+  .ledger .was { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .ledger .arrow { color: var(--accent); font-weight: 700; }
+  .ledger .now { font-weight: 500; }
+  .ledger .why {
+    grid-column: 1 / -1;
+    font-family: var(--body);
+    font-size: 15px;
+    color: var(--muted);
+    padding-top: 10px;
+  }
+
+  /* ---- tables ------------------------------------------------------- */
+
+  .scroller { overflow-x: auto; margin: 24px 0 26px; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; }
+  caption {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-bottom: 10px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 16px 9px 0;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  th {
+    font-weight: 500;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom-color: var(--ink);
+  }
+  td.num, th.num { text-align: right; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .who { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
+  .who::before {
+    content: "";
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    background: var(--c);
+    flex: none;
+  }
+  .r-paololimo { --c: var(--paololimo); }
+  .r-gemini { --c: var(--gemini); }
+  .r-codex { --c: var(--codex); }
+  .r-claude { --c: var(--claude); }
+
+  /* A bar drawn to the same scale as every other bar in its table. */
+  .bar {
+    display: block;
+    height: 7px;
+    border-radius: 3px;
+    background: var(--c, var(--muted));
+    min-width: 3px;
+  }
+  .bar.faded { opacity: 0.34; }
+  td.barcell { width: 190px; padding-right: 0; }
+
+  /* ---- the pull-out: one finding the instruments made visible -------- */
+
+  .finding {
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+    padding: 24px 28px 8px;
+    margin: 30px 0;
+    max-width: 68ch;
+  }
+  .finding h3 { margin-top: 0; }
+
+  /* ---- the error log ------------------------------------------------ */
+
+  .errors { list-style: none; padding: 0; margin: 22px 0 0; max-width: 70ch; }
+  .errors li {
+    border-top: 1px solid var(--rule);
+    padding: 15px 0 15px 0;
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 4px 20px;
+  }
+  .errors li:last-child { border-bottom: 1px solid var(--rule); }
+  .errors .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bad);
+    padding-top: 5px;
+  }
+  .errors .what { font-weight: 600; margin: 0; font-size: 16px; }
+  .errors .fix { grid-column: 2; color: var(--muted); margin: 0; font-size: 15.5px; }
+
+  .open { max-width: 70ch; }
+  .open li { margin-bottom: 14px; }
+
+  footer {
+    margin-top: 76px;
+    padding-top: 22px;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+  }
+
+  @media (max-width: 620px) {
+    body { font-size: 16px; }
+    .ledger { grid-template-columns: 1fr; gap: 4px; }
+    .ledger .arrow { display: none; }
+    .ledger .was::after { content: " →"; }
+    .errors li { grid-template-columns: 1fr; }
+    .errors .fix { grid-column: 1; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">cars_ai — design record</p>
+  <h1>Four Networks, One Circuit</h1>
+  <p class="standfirst">
+    A hand-written neural network races three written by AI agents. Same genetic
+    algorithm, same circuits, same seed — the architecture is the only thing that
+    differs. This is what was decided, what was measured, and what turned out
+    to be wrong.
+  </p>
+  <dl class="telemetry">
+    <div><dt>Entrants</dt><dd>4</dd></div>
+    <div><dt>Population</dt><dd>100</dd></div>
+    <div><dt>Generations</dt><dd>120</dd></div>
+    <div><dt>Evaluations</dt><dd>12 000</dd></div>
+    <div><dt>Circuits</dt><dd>3 + 1</dd></div>
+    <div><dt>Libraries</dt><dd>numpy</dd></div>
+  </dl>
+</header>
+
+<section>
+  <div class="col">
+    <h2><span class="num">01</span>The rules, and why they are these rules</h2>
+    <p>
+      Each entrant is one file in <code>src/brains/</code> holding a class that turns
+      seven sensor readings plus its own speed into steering and throttle. Dropping
+      the file in is the whole installation: every module in that directory is
+      imported at startup, so the next <code>train.py</code> trains it and the next
+      <code>race.py</code> puts it on the grid.
+    </p>
+    <p>
+      Two rules do the real work. <strong>Everything between the sensors and the
+      controls must be learned.</strong> A braking criterion like
+      <code>speed / (speed + distance ahead)</code> is sound engineering and does not
+      belong here — the race compares what evolution finds against what evolution
+      finds, not against what an author already knew. And <strong>every entrant must
+      implement <code>describe()</code></strong>, returning its layers and weight
+      matrices, because a network nobody can see is half a submission.
+    </p>
+    <p>
+      The shape is otherwise free: any number of layers, any number of neurons, any
+      topology, any subset of the sensors. Weights are never trained by gradient
+      descent — there is no gradient to take. Fitness is distance travelled before
+      crashing, and reaching it means passing through a boolean road mask and a
+      discrete death condition, neither of which has a useful derivative.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2><span class="num">02</span>What makes the comparison fair</h2>
+    <p>
+      Each entrant keeps its own population — crossing one entrant's genome with
+      another's is meaningless, since the sizes differ and at equal size the genes
+      would mean different things. But there is <strong>one draw per
+      evaluation</strong>: one circuit, one island layout, one start point, shared by
+      everyone. Parity is a property of the loop rather than a convention someone has
+      to remember.
+    </p>
+    <p>
+      Training each entrant in its own run did not give this, even on one seed. Start
+      points came from the same generator as the genomes and the breeding, so how many
+      numbers had already been drawn — which depends on genome size — decided where
+      the cars started. Entrants of different sizes met different starts from
+      generation 1. Start points now come from a stream of their own.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">03</span>The grid</h2>
+  <div class="col">
+    <p>
+      Three of the four converged on the same two ideas — a linear skip straight from
+      the sensors to the controls, and left/right mirror symmetry imposed rather than
+      learned. That is not coincidence, and section 06 explains why.
+    </p>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>Entrants, as submitted</caption>
+      <thead>
+        <tr>
+          <th>Entrant</th><th class="num">Params</th><th>Shape</th><th>Symmetry</th><th>Skip</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="who r-paololimo">paololimo</span></td>
+          <td class="num">160</td><td>8 → 10 → 4 → 2</td><td>mirror</td><td>yes</td>
+        </tr>
+        <tr>
+          <td><span class="who r-claude">claude</span></td>
+          <td class="num">150</td><td>8 → 12 → 2</td><td>mirror</td><td>yes</td>
+        </tr>
+        <tr>
+          <td><span class="who r-gemini">gemini</span></td>
+          <td class="num">150</td><td>two 6-unit streams</td><td>none</td><td>yes</td>
+        </tr>
+        <tr>
+          <td><span class="who r-codex">codex</span></td>
+          <td class="num">344</td><td>reflex 12 ∥ context 10 → bend 8</td><td>none</td><td>yes</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2><span class="num">04</span>The incumbent shrank, then gained a layer</h2>
+  </div>
+  <div class="ledger">
+    <span class="was">8 → 14 → 14 → 2 &nbsp;·&nbsp; 366 params</span>
+    <span class="arrow">→</span>
+    <span class="now">8 → 10 → 4 → 2 &nbsp;·&nbsp; 160 params</span>
+    <p class="why">
+      100 genomes over 120 generations is 12 000 evaluations, and a derivative-free
+      search wants 100 to 1000 of them per parameter. At 366 parameters that asks for
+      37 000 at the most generous end. The old default was not short of capacity; it
+      was short of the search to fill it. It was never going to be searched, only
+      sampled.
+    </p>
+  </div>
+  <div class="col">
+    <p>
+      Cutting to 150 on a single hidden layer of twelve fixed the arithmetic. Depth
+      came back afterwards, and cost almost nothing: <strong>two layers at these
+      widths are ten parameters more than one.</strong> So the choice was about shape
+      rather than budget.
+    </p>
+    <p>
+      Reading the ray fan is comparing each ray against its neighbours to find the
+      gap, and <em>then</em> weighing that against own speed to set steering and
+      braking. One matrix has to do both at once; two do them in turn. Hence a funnel:
+      the first layer is wider than the input because it forms features across the
+      whole fan, the second narrow because it composes a judgement already made — and
+      because the linear skip carries the coarse policy to the controls anyway,
+      leaving those four units only the nonlinear correction to it.
+    </p>
+    <p>
+      An earlier draft used 8 → 8 → 6 → 2 at 156 parameters, which was cheaper and
+      wrong: eight units reading eight inputs form no features, they only pass the
+      vector along.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2><span class="num">05</span>Two flaws in the search itself</h2>
+    <p>
+      Both live in <code>genetic.py</code>, so both are shared by every entrant
+      equally and advantage nobody. Neither was found by looking at fitness; both were
+      found by looking at what the algorithm actually does.
+    </p>
+
+    <h3>The mutation was as large as the weights</h3>
+  </div>
+  <div class="ledger">
+    <span class="was">σ = 0.30, fixed</span>
+    <span class="arrow">→</span>
+    <span class="now">σ: 0.30 → 0.03, geometric</span>
+    <p class="why">
+      A typical weight is 0.271, so σ/|w| was <strong>1.11</strong>: a mutated gene
+      was not perturbed but effectively redrawn. And it was as violent at generation
+      120 as at generation 1, so nothing could be refined late in a run and only the
+      untouched elites carried progress. Geometric rather than linear, because the
+      useful quantity is the ratio of the step to the weights — equal fractions of the
+      run should shrink it by equal factors.
+    </p>
+  </div>
+  <div class="col">
+    <h3>The ranking was computed and then discarded</h3>
+  </div>
+  <div class="ledger">
+    <span class="was">parents drawn uniformly</span>
+    <span class="arrow">→</span>
+    <span class="now">log-decreasing rank weights</span>
+    <p class="why">
+      Selection produced a ranking — the top 30% — and the very next line drew parents
+      uniformly inside it, so the best genome in the pool and the one scraping the
+      cut-off bred equally often. Rank weighting is what the evolution-strategy
+      literature settles on: the population's shift from one generation to the next is
+      a noisy estimate of the direction fitness improves in, and this is the weighting
+      that estimates it best. Effective pool size goes from 30 to 16.6 — the ranking
+      is used without the diversity collapsing.
+    </p>
+  </div>
+  <div class="col">
+    <p>
+      Neither is measured. Thirty generations on three seeds could not separate the
+      new search from the old, and the seed-to-seed spread on this problem is 0.04 to
+      3.05 laps on one architecture. They are bets on the argument.
+    </p>
+    <p>
+      A third idea was rejected on the same evidence. Cutting the population to 20 and
+      running 600 generations sounds like it follows from CMA-ES's default
+      <code>λ = 4 + 3·ln(d) ≈ 19</code>, but that default assumes a <em>deterministic</em>
+      objective and a far more informed algorithm. Under noise the theory says the
+      opposite. At population 20 the breeding pool is six genomes, effective size 3.7,
+      and four elites are a fifth of the population: the search would spend 600
+      generations refining a winner picked at random around generation 10.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2><span class="num">06</span>The brief leaked the incumbent's design</h2>
+    <p>
+      One entry arrived with the incumbent's exact architecture — mirror symmetry, one
+      hidden layer of twelve, a linear skip, 150 parameters. The obvious explanation
+      was convergent design. The real one was worse.
+    </p>
+    <p>
+      The symmetry hint had been removed from the brief's rationale and left in three
+      other places the agents necessarily receive: the list of operations the rules
+      explicitly permit ("reordering the sensors, <em>mirroring them</em>, and plain
+      linear combinations are fine"), a docstring example, and a checkpoint comment
+      naming <code>symmetric</code> — the incumbent's own configuration flag — by name.
+      All three are closed now. For that entry it is too late.
+    </p>
+    <p>
+      It is not unfair between the entrants: all three received the identical brief,
+      and the other two chose differently. And it resolved itself when the incumbent
+      moved to a funnel — what remains is a controlled comparison of depth against
+      width at the same symmetry, the same skip and a near-identical budget, which is
+      more informative than four arbitrary architectures.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">07</span>What the instruments show</h2>
+  <div class="col">
+    <p>
+      The window carries a strip of analyses under the circuit: progress, genetic
+      spread, and best-per-circuit. The third of those was built because the
+      per-circuit scores were being aggregated into one fitness before anything could
+      look at them. It immediately showed something no fitness number could.
+    </p>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>Best laps per circuit, generation 23 of 120 — bar length to one scale</caption>
+      <thead>
+        <tr>
+          <th>Entrant</th>
+          <th class="num">serpentine</th><th></th>
+          <th class="num">grid-city</th><th></th>
+          <th class="num">speedway</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="r-paololimo">
+          <td><span class="who r-paololimo">paololimo</span></td>
+          <td class="num">1.81</td><td class="barcell"><span class="bar faded" style="width:55%"></span></td>
+          <td class="num">1.06</td><td class="barcell"><span class="bar" style="width:32%"></span></td>
+          <td class="num">2.99</td><td class="barcell"><span class="bar faded" style="width:92%"></span></td>
+        </tr>
+        <tr class="r-gemini">
+          <td><span class="who r-gemini">gemini</span></td>
+          <td class="num">3.03</td><td class="barcell"><span class="bar faded" style="width:93%"></span></td>
+          <td class="num">0.42</td><td class="barcell"><span class="bar" style="width:13%"></span></td>
+          <td class="num">3.24</td><td class="barcell"><span class="bar faded" style="width:99%"></span></td>
+        </tr>
+        <tr class="r-claude">
+          <td><span class="who r-claude">claude</span></td>
+          <td class="num">2.41</td><td class="barcell"><span class="bar faded" style="width:74%"></span></td>
+          <td class="num">0.60</td><td class="barcell"><span class="bar" style="width:18%"></span></td>
+          <td class="num">2.54</td><td class="barcell"><span class="bar faded" style="width:78%"></span></td>
+        </tr>
+        <tr class="r-codex">
+          <td><span class="who r-codex">codex</span></td>
+          <td class="num">0.46</td><td class="barcell"><span class="bar faded" style="width:14%"></span></td>
+          <td class="num">0.41</td><td class="barcell"><span class="bar" style="width:13%"></span></td>
+          <td class="num">3.26</td><td class="barcell"><span class="bar faded" style="width:100%"></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="finding">
+    <h3>One circuit out of three is deciding the race</h3>
+    <p>
+      Fitness across circuits is <code>worst + 0.35 × mean</code>, so the lowest bar
+      leads the number. <strong>All four entrants are weakest on grid-city</strong> —
+      it is the binding constraint for every one of them, and the incumbent's 1.06
+      there is two and a half times the next best.
+    </p>
+    <p>
+      Meanwhile speedway is saturated. The frame budget grants three laps at top
+      speed, and three entrants are at or past it — a car cutting inside the
+      centreline can exceed 3.00. A circuit everyone maxes out separates nobody: of
+      three training circuits, one contributes nothing to selection, one partly
+      discriminates, and one decides everything.
+    </p>
+  </div>
+
+  <div class="col">
+    <p>
+      Genetic spread at generation 23 sits at 0.58 of its starting value and is
+      falling smoothly — the populations are converging at a healthy rate, not
+      collapsing. The widest genome, codex at 344, decays slowest, which is what more
+      genes to diverge over should look like.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2><span class="num">08</span>Still open</h2>
+    <ul class="open">
+      <li>
+        <strong>120 generations or 250?</strong> At 160 parameters the current budget
+        is 75 evaluations per parameter, already under the rule of thumb's floor.
+        Doubling it searches what is already there properly — but it lifts the
+        constraint most for codex, which at 344 parameters is the only entrant the
+        budget is really binding. That is a choice about what the race should measure:
+        who designed for the budget, or whose architecture has the higher ceiling.
+      </li>
+      <li>
+        <strong>Is speedway worth keeping as it is?</strong> Everyone maxes it. Either
+        its frame budget rises or it is doing nothing but adding runtime.
+      </li>
+      <li>
+        <strong>Depth against width</strong> is now a genuine two-horse comparison —
+        160 parameters in a funnel against 150 in one wide layer, everything else
+        held. The run answers it; no further experiment is needed.
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">09</span>Errors, and what they cost</h2>
+  <div class="col">
+    <p>
+      Kept because a design record that lists only the decisions that worked is not a
+      record, and because several of these were plausible-sounding arguments that
+      measurement contradicted.
+    </p>
+  </div>
+  <ul class="errors">
+    <li>
+      <span class="tag">destroyed</span>
+      <p class="what">A smoke test overwrote the trained champion</p>
+      <p class="fix">
+        <code>outputs/</code> is gitignored, so no copy existed. Retrained: 3.19 laps
+        against the 3.23 in the README.
+      </p>
+    </li>
+    <li>
+      <span class="tag">parity</span>
+      <p class="what">Start points were drawn from the genome generator</p>
+      <p class="fix">
+        Genome size decided how many numbers had been consumed, so differently sized
+        entrants met different starts from generation 1. Fixed with a dedicated
+        stream, proved before and after.
+      </p>
+    </li>
+    <li>
+      <span class="tag">false</span>
+      <p class="what">The brief claimed adjacent genes help crossover</p>
+      <p class="fix">
+        They do not: crossover is uniform, position is irrelevant. One entrant had
+        already designed contiguous 14-gene blocks around the claim.
+      </p>
+    </li>
+    <li>
+      <span class="tag">leak</span>
+      <p class="what">Three files told the agents about the mirror symmetry</p>
+      <p class="fix">See section 06. One entry was built on it.</p>
+    </li>
+    <li>
+      <span class="tag">crash</span>
+      <p class="what">The panel read attributes only the incumbent had</p>
+      <p class="fix">
+        <code>layer_sizes</code> and <code>weights</code>, so any competitor took the
+        window down on the first frame it led. Replaced by <code>describe()</code>
+        with a measured-response fallback, then a full exception guard.
+      </p>
+    </li>
+    <li>
+      <span class="tag">wrong</span>
+      <p class="what">Advice to close the editor to free CPU</p>
+      <p class="fix">
+        The ablation was running inside that editor's integrated terminal. Closing it
+        would have killed the run.
+      </p>
+    </li>
+    <li>
+      <span class="tag">wrong</span>
+      <p class="what">A refactor was skipped for a reason that did not hold</p>
+      <p class="fix">
+        The claim was that float32 → float64 accumulation would shift every result.
+        Measured: the clearance field holds integers 0–49, accumulation is exact in
+        both widths, zero divergences in 3924 casts. Taking it was a 2.34× speed-up.
+      </p>
+    </li>
+    <li>
+      <span class="tag">removed</span>
+      <p class="what">The per-generation curve was deleted on a bad argument</p>
+      <p class="fix">
+        "They all move together" is true but not a reason: the differences between
+        those lines are exactly where one entrant handles a hard draw better than
+        another. Restored, faint, beneath the running maximum.
+      </p>
+    </li>
+    <li>
+      <span class="tag">invisible</span>
+      <p class="what">Three new analyses shipped that nobody could see</p>
+      <p class="fix">
+        The window asked for 980 px of height on a 900 px display, and the layout code
+        dropped the strip rather than shrinking anything. The circuit now scales to
+        make room for it.
+      </p>
+    </li>
+    <li>
+      <span class="tag">counting</span>
+      <p class="what">The time remaining climbed instead of falling</p>
+      <p class="fix">
+        It divided elapsed time by the generation <em>in progress</em>: the numerator
+        grew while the divisor did not. Now the mean of the last five finished
+        generations.
+      </p>
+    </li>
+    <li>
+      <span class="tag">luck</span>
+      <p class="what">A layout test passed by coincidence</p>
+      <p class="fix">
+        It asserted a difference between two screen sizes that happen to yield the
+        same scale, and survived only on the short-circuit of an <code>and</code>.
+      </p>
+    </li>
+  </ul>
+</section>
+
+<footer>
+  <span>cars_ai</span>
+  <span>numpy + pygame, no ML libraries</span>
+  <span>genetic algorithm and networks written from scratch</span>
+</footer>
+
+</div>
