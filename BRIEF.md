@@ -196,12 +196,21 @@ it is yours to find.
 
 ## Check your work
 
+Python 3.12 — on 3.14 `pygame.font` is unavailable and the window never opens.
+
 ```bash
-python -m pytest tests -q                    # must stay green, and it checks your entry
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+python -m pytest tests -q                    # green once your file is in place
 python -c "from src.brains import entrants; print(entrants())"
 python train.py --generations 5 --population 20 --headless
 python race.py --headless
 ```
+
+The copy you have been given holds no entrants at all — the others are withheld,
+so you are designing without seeing anyone else's answer. The suite therefore
+fails until your file exists, and passes once it does.
 
 The test suite runs your file against the contract: shape and range of your
 outputs, that your genome is flat and round-trips, and that you face the same
