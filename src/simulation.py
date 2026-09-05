@@ -43,6 +43,12 @@ class Simulation:
         self.cfg = cfg
         self.rng = np.random.default_rng(cfg.seed)
         self._brain_rng = np.random.default_rng(0)  # see _new_car
+        # Start points come from their own stream, not from `self.rng`. Sharing
+        # one stream tied the sequence of starts to how many numbers had already
+        # been drawn to build genomes and breed them — which depends on genome
+        # size, so two brains of different sizes met different starts from the
+        # first generation on. Entrants have to face the same test.
+        self._start_rng = np.random.default_rng(cfg.seed)
         set_seed(cfg.seed)
         # Rendering has to stay in one process, so the pool is for headless runs.
         self.workers = 1 if render else max(1, workers)
@@ -154,7 +160,7 @@ class Simulation:
         else:
             track = self.tracks[track_number]
 
-        start = track.valid_start_index(self.rng) if self.cfg.random_start else None
+        start = track.valid_start_index(self._start_rng) if self.cfg.random_start else None
 
         pool = self._ensure_pool()
         if pool is not None:

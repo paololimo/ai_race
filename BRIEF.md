@@ -86,7 +86,10 @@ tuples — lists and scalars).
 **Randomness** — draw initial parameters from the `rng` you are given and from
 nothing else. No `np.random.seed`, no `random`, no `time`. The harness evaluates
 populations across worker processes and relies on being able to reproduce a
-serial run exactly.
+serial run exactly, and it draws the start points from a stream of its own so
+that entrants of different genome sizes meet the same circuits, the same island
+layouts and the same starts on the same seed. Seeding your own generator would
+break that.
 
 ## Rules
 

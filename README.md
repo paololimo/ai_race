@@ -198,8 +198,9 @@ to the agent, and `src/brains/_template.py` the file it copies.
 
 Everything the comparison depends on stays with the harness: circuits, physics,
 sensors, fitness, selection, crossover, mutation, frame budget and seed. Train
-every entry with the same `--seed`, `--generations` and `--population`, then put
-the champions on the grid together:
+every entry with the same `--seed`, `--generations` and `--population`, and they
+face the same circuits, the same island layouts and the same start points,
+generation by generation. Then put the champions on the grid together:
 
 ```bash
 python race.py --grid outputs/human_genome.npz outputs/codex_genome.npz outputs/gemini_genome.npz

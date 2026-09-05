@@ -150,3 +150,37 @@ def test_grand_prix_ranks_every_entrant_once(tmp_path) -> None:
 def test_an_empty_grid_is_refused() -> None:
     with pytest.raises(SystemExit, match="No entrants"):
         build_grid([], INPUTS)
+
+
+def test_two_brains_meet_the_same_conditions(tmp_path) -> None:
+    """Same seed must mean the same test, whatever the genome size.
+
+    Start points used to be drawn from the same stream as the genomes and the
+    breeding, so how many numbers had already been drawn — which depends on
+    genome size — decided where the cars started. Two entrants trained on one
+    seed were being scored on different sequences of starts from generation 1.
+    """
+    real = Simulation._new_car
+    base = replace(SimulationConfig(), seed=42, generations=3, checkpoint_dir=str(tmp_path))
+
+    def conditions(hidden) -> list:
+        cfg = replace(
+            base,
+            brain=BrainRef("baseline", {"hidden_sizes": hidden}),
+            genetic=replace(base.genetic, population_size=8),
+        )
+        sim = Simulation(cfg, render=False)
+        seen: list = []
+
+        def spy(self, track, genome, brain=None, start_index=None):
+            seen.append((track.cfg.name, start_index))
+            return real(self, track, genome, brain, start_index)
+
+        Simulation._new_car = spy
+        try:
+            sim.train()
+        finally:
+            Simulation._new_car = real
+        return list(dict.fromkeys(seen))
+
+    assert conditions([4]) == conditions([24, 24])
