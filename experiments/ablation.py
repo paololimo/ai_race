@@ -121,10 +121,10 @@ def main() -> None:
         for seed in range(1, args.seeds + 1)
     ]
     print(
-        f"{len(VARIANTS)} varianti x {args.seeds} seed x {args.generations} generazioni, "
-        f"popolazione {args.population}"
+        f"{len(VARIANTS)} variants x {args.seeds} seeds x {args.generations} generations, "
+        f"population {args.population}"
     )
-    print(f"{len(jobs)} run su {args.workers} processi paralleli\n")
+    print(f"{len(jobs)} runs across {args.workers} worker processes\n")
 
     started = time.time()
     with multiprocessing.Pool(args.workers) as pool:
@@ -133,10 +133,13 @@ def main() -> None:
             pool.imap_unordered(run_job, jobs), start=1
         ):
             collected.setdefault(name, []).append((seed, fitness, laps))
-            print(f"  [{done}/{len(jobs)}] {name} seed {seed}: gara {laps:.2f} giri", flush=True)
-    print(f"\ncompletato in {(time.time() - started) / 60:.1f} minuti\n")
+            print(f"  [{done}/{len(jobs)}] {name} seed {seed}: race {laps:.2f} laps", flush=True)
+    print(f"\nfinished in {(time.time() - started) / 60:.1f} minutes\n")
 
-    header = f"{'variante':<12} {'param':>6} {'train (mediana)':>16} {'gara (mediana)':>16}  {'gara, per seed'}"
+    header = (
+        f"{'variant':<12} {'params':>6} {'train (median)':>16} "
+        f"{'race (median)':>16}  {'race, per seed'}"
+    )
     print(header)
     print("-" * len(header))
 
@@ -165,7 +168,7 @@ def main() -> None:
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(results, indent=2))
-    print(f"\nDati completi in {args.out}")
+    print(f"\nFull results in {args.out}")
 
 
 if __name__ == "__main__":
