@@ -429,6 +429,18 @@ class Simulation:
 
     def train(self) -> None:
         self._started = time.monotonic()
+        try:
+            self._loop()
+        except KeyboardInterrupt:
+            # Ctrl+C during a recorded run would otherwise leave the video
+            # unfinished, and a run is hours long: stopping it early has to be
+            # allowed to keep what it has.
+            logger.info("Stopped by hand — saving what there is")
+        self.save_all()
+        self.close()
+        pygame.quit()
+
+    def _loop(self) -> None:
         for generation in range(1, self.cfg.generations + 1):
             began = time.monotonic()
             # How far through the run we are, which is what the mutation size is
@@ -443,9 +455,6 @@ class Simulation:
                     per_track[i].append(values)
                 if not keep:
                     logger.info("Interrupted at generation %d", generation)
-                    self.save_all()
-                    self.close()
-                    pygame.quit()
                     return
 
             for i, squad in enumerate(self.squads):
@@ -469,10 +478,6 @@ class Simulation:
                 generation,
                 "   ".join(f"{s.name} {s.history[-1]:5.2f}" for s in self.squads),
             )
-
-        self.save_all()
-        self.close()
-        pygame.quit()
 
     def _aggregate(self, per_track_scores: np.ndarray) -> np.ndarray:
         """Combine one genome's scores across the circuits into one fitness.
