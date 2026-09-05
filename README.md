@@ -4,35 +4,43 @@ Cars that learn to drive, with the neural network and the genetic algorithm
 written from scratch. No machine learning libraries: numpy for the linear
 algebra, pygame for drawing and collisions, nothing else.
 
-Training runs on **three structurally different circuits**; the final race is
-run on a fourth circuit the network has never seen.
+Several networks compete: one written by hand, the others by AI agents. They
+**train together**, in the same run, on the same three circuits, and then race
+together on a fourth circuit none of them has ever seen.
+
+```bash
+python train.py     # everyone evolves side by side, with the dashboard
+python race.py      # every champion on the grid, on the unseen circuit
+```
+
+Neither command takes an entrant argument. The grid is whatever is in
+`src/brains/`.
 
 ## Layout
 
 ```
 src/
-├── config.py           # frozen dataclasses: circuits, car, network, GA, run
-├── brains/             # the registry: one file per competing architecture
-│   ├── __init__.py     # Brain protocol, register_brain, BrainFactory
-│   ├── baseline.py     # this project's own network, as `baseline`
-│   └── _template.py    # what a competing agent copies
-├── neural_network.py   # feedforward 8 → 14 → 14 → 2, flat genome
+├── brains/             # the competitors — one file each, and nothing else
+│   ├── __init__.py     # the registry: Brain protocol, discovery, colours
+│   ├── paololimo.py    # the hand-written network: 8 → 14 → 14 → 2
+│   ├── codex.py
+│   └── gemini.py
+├── config.py           # frozen dataclasses: circuits, car, GA, run
 ├── genetic.py          # selection, uniform crossover, mutation, elitism
 ├── track.py            # procedural circuit generation + drivable mask
 ├── track_check.py      # geometric validation of a generated circuit
 ├── obstacles.py        # traffic lights and pedestrians: working, not wired in
 ├── car.py              # physics, 7 ray sensors, braking, fitness
 ├── renderer.py         # window: circuit on the left, panel on the right
-├── dashboard.py        # panel: status, fitness chart, leader's network
-├── simulation.py       # generational loop across circuits
-├── grand_prix.py       # the multi-entrant race on the unseen circuit
-├── parallel.py         # population evaluation across worker processes
+├── dashboard.py        # panel: standings and a fitness curve per entrant
+├── simulation.py       # the generational loop, and the race
+├── parallel.py         # population scoring across worker processes
 └── cli.py              # shared arguments and configuration
-train.py                # train on the three circuits
-race.py                 # take the champion to the unseen circuit
+train.py                # train everyone on the three circuits
+race.py                 # take every champion to the unseen circuit
 tests/
 ├── test_core.py        # network, genetic operators, track, car
-├── test_brains.py      # the race harness contract
+├── test_entrants.py    # the race harness: discovery, contract, parity
 ├── test_obstacles.py   # moving-hazard module, in isolation
 └── test_tracks.py      # geometric validity of every circuit
 experiments/
@@ -53,24 +61,35 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python train.py                                # train with the dashboard (ESC to quit)
-python train.py --headless --generations 200   # fast training, no window
-python race.py                                 # race on the circuit never trained on
-python race.py --track 1                       # replay the champion on a training circuit
+python train.py                                # dashboard, everyone at once (ESC to quit)
+python train.py --headless --generations 200   # fast training, all cores
+python train.py --shown 20                     # draw more cars per entrant
+python race.py                                 # the race, on the unseen circuit
+python race.py --track 1                       # the same grid on a training circuit
 python -m pytest tests -q                      # tests
 ```
 
-Training a named entry, and racing several together:
+Each champion is written to `outputs/<name>.npz`, which is what `race.py` reads.
 
-```bash
-python train.py --brain baseline --entrant human --seed 42 --generations 120 --headless
-python train.py --brain codex    --entrant codex --seed 42 --generations 120 --headless
-python race.py --grid outputs/human_genome.npz outputs/codex_genome.npz
-```
+## Adding a competitor
 
-`race.py` uses `outputs/best_genome.npz` unless given another path. Headless
-training spreads the population across worker processes (`--workers`, default
-`cores - 2`); rendering always runs in a single process.
+Write one file, `src/brains/<name>.py`, holding a class that satisfies the
+`Brain` protocol — `forward` (8 sensor readings in, steering and throttle out),
+plus `get_genome` / `set_genome` to expose its parameters as one flat vector —
+and decorate it with `@register_brain("<name>")`. That is the whole
+installation: every module in `src/brains/` is imported on startup, so the next
+`train.py` trains it alongside the others, the next `race.py` puts it on the
+grid, and the dashboard grows a row and a curve for it. No other file changes.
+
+`BRIEF.md` is the spec to hand to the agent writing it. The test suite checks
+every entrant it finds against the contract, so a broken entry fails the tests
+rather than the race — and an entry that raises on *import* is logged and left
+out rather than stopping everyone else.
+
+Colours are assigned in `src/brains/__init__.py`, not by the entrants, so no
+competitor can pick one that clashes with another's: paololimo red, gemini blue,
+codex off-white, claude orange, and anything else takes the next free colour
+from a palette.
 
 ## How it works
 
@@ -80,12 +99,11 @@ normalised distances plus its own speed: 8 inputs. Islands are cut into the
 road mask itself, so the rays see them as walls with no dedicated sensor
 channel.
 
-**Brain.** Dense `8 → 14 → 14 → 2` with `tanh` on every layer (366 parameters).
-The outputs are steering (−1…1) and throttle, where a negative value brakes.
-The weights are never trained by gradient descent: they are a flat genome that
-the genetic algorithm recombines. `genetic.py` does not import
-`neural_network.py`, so changing the architecture never touches the
-evolutionary operators.
+**Brains.** Each entrant is a flat genome the genetic algorithm recombines; the
+weights are never trained by gradient descent. `genetic.py` knows nothing about
+any architecture, which is why one algorithm can breed all of them. The
+hand-written entrant is a dense `8 → 14 → 14 → 2` with `tanh` on every layer,
+366 parameters.
 
 **Physics.** The car only moves forward. Steering authority grows with speed up
 to 1.5 px/frame and then saturates, which makes the turning radius
@@ -151,23 +169,55 @@ manoeuvres for those exact laps rather than learning to drive: it scored 2.9
 laps in training and **0.12** on the unseen circuit, dying on the very first
 island. With it, training and race scores match.
 
-## Results
+## What makes the comparison fair
 
-| | Training circuits | Race circuit (unseen) |
-|---|---|---|
-| Fixed starts and islands | 3.04 · 2.91 · 2.90 | **0.12** |
-| Randomised starts and islands | 3.06 · 2.98 · 3.23 | **3.23** |
+Each entrant keeps its own population — crossing one entrant's genome with
+another's is meaningless, since the sizes differ and at equal size the genes
+would mean different things — but there is **one draw per evaluation**: one
+circuit, one island layout, one start point, shared by everyone. Parity is a
+property of the loop rather than a convention someone has to remember.
 
-The network is identical in both rows — same 366 parameters, same architecture,
-same fitness. Only the training protocol changed.
+Training each entrant in its own run did not give this, even on one seed. Start
+points came from the same generator as the genomes and the breeding, so how many
+numbers had already been drawn — which depends on genome size — decided where
+the cars started, and entrants of different sizes met different starts from
+generation 1. Start points now come from a stream of their own.
+
+**Checkpoints name their own entrant.** `outputs/<name>.npz` carries the
+registry name and the full spec, not just the layer sizes. Saving only
+`hidden_sizes` silently dropped every other choice — `symmetric` above all,
+which changes what the same weights compute — so a genome trained one way was
+raced another.
+
+## Watching it, and the cores
+
+With several entrants the population is a few hundred cars, which is a swarm
+nobody can read, and drawing it every frame is slow. So the worker pool scores
+every full population across all cores while the window draws a readable subset
+— `--shown`, eight per entrant by default, taken from the front of each
+population, where elitism keeps the best genomes. Those cars are simulated twice,
+once on screen and once in a worker, which costs a few dozen cars' arithmetic
+and gives identical numbers: every step is deterministic given the track, the
+start and the genome.
+
+What the cores cannot fix is that watching 120 generations takes 120 generations
+of wall-clock time. For a real run use `--headless`.
 
 ## Dashboard
 
 1380×700 window: circuit on the left, panel on the right with the generation,
-current circuit (`TRACK k/3`), progress through the frame budget, run
-statistics, the best-fitness history and the leader's network — green edges for
-positive weights, red for negative, intensity proportional to magnitude. The
-diagram is cached and redrawn only when the leader changes.
+current circuit (`TRACK k/3`), progress through the frame budget, the standings
+— one row per entrant in its colour, ordered by who is furthest round — and the
+best-fitness history, one curve per entrant. Both grow by themselves when an
+entrant is added.
+
+## The race
+
+Every champion goes onto `gauntlet` together, one colour each, with the
+classification written to the log. Cars have no collision with one another — the
+physics never modelled it — so they are spaced 26 px apart on the grid purely to
+stay visible; distance is measured from each car's own start, so the stagger
+costs nobody progress, but it does mean they meet each corner a few frames apart.
 
 ## Moving hazards (not active)
 
@@ -182,52 +232,9 @@ network: seeing only instantaneous distance, it cannot tell one walking into its
 path from one standing still — seven of eight race attempts ended in a
 pedestrian collision, with zero off-track deaths.
 
-## Racing several architectures
-
-The project exists to answer one question — can a network I designed drive a
-circuit better than networks other agents design? — so the harness is built so
-that the architecture is the *only* thing that differs between entries.
-
-A competing agent writes exactly one file, `src/brains/<name>.py`, holding a
-class that satisfies the `Brain` protocol: `forward` (8 sensor readings in,
-steering and throttle out), plus `get_genome` / `set_genome` to expose its
-parameters as one flat vector. `@register_brain("name")` makes it selectable as
-`train.py --brain name`; modules in `src/brains/` are imported automatically, so
-dropping the file in is the whole installation. `BRIEF.md` is the spec to hand
-to the agent, and `src/brains/_template.py` the file it copies.
-
-Everything the comparison depends on stays with the harness: circuits, physics,
-sensors, fitness, selection, crossover, mutation, frame budget and seed. Train
-every entry with the same `--seed`, `--generations` and `--population`, and they
-face the same circuits, the same island layouts and the same start points,
-generation by generation. Then put the champions on the grid together:
-
-```bash
-python race.py --grid outputs/human_genome.npz outputs/codex_genome.npz outputs/gemini_genome.npz
-```
-
-They run on `gauntlet` at the same time, one colour each, with a live
-classification down the panel and the finishing order written to
-`outputs/grand_prix.json`. Cars have no collision with one another — the physics
-never modelled it — so they are spaced 26 px apart on the grid purely to stay
-visible; each one's distance is measured from its own start, so the stagger
-costs nobody progress, but it does mean they meet each corner a few frames
-apart. The strict per-entry number is still the solo run, `python race.py
-outputs/<name>_genome.npz`.
-
-**Checkpoints name their own brain.** `outputs/*.npz` carries the brain's
-registry name and its full spec, not just the layer sizes. Saving only
-`hidden_sizes` silently dropped every other choice — `symmetric` above all,
-which changes what the same weights compute — so a genome trained one way was
-raced another. Checkpoints written before this change carry no manifest and are
-refused by the grid: retrain them.
-
 ## Differences from the original project
 
 - Circuits are generated procedurally rather than drawn in Photoshop, so the
   project is reproducible with no external assets.
 - Continuous outputs (steering, throttle) instead of discrete actions.
 - Islands in the carriageway are an addition; the original had only the verges.
-- The multi-model race is run through a brain registry (see above): every
-  entrant shares one harness and supplies only an architecture, rather than
-  each model bringing its own project.
