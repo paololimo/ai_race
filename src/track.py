@@ -244,24 +244,24 @@ class Track:
         # Islands are cut out of the road, so they are part of the track
         # geometry: the wall sensors and the collision mask see them for free.
         self._draw_islands(surface)
-        nx, ny = self.normal_at_index(0)
-        half = self.road_width_at_index(0) / 2
-        x, y = self.samples[0]
-        pygame.draw.line(
-            surface,
-            self.cfg.line_color,
-            (x - nx * half, y - ny * half),
-            (x + nx * half, y + ny * half),
-            3,
-        )
+        # The start line is *not* painted here. Cars begin somewhere different
+        # every generation, so a line baked into the texture would sit at a
+        # place nobody starts from; the renderer draws it where the cars
+        # actually are. Keeping it off the surface also keeps it out of the
+        # drivable mask, which is derived from these pixels.
         return surface
+
+    def start_line(self, index: int) -> Tuple[Point, Point]:
+        """The two ends of a line across the road at this sample."""
+        nx, ny = self.normal_at_index(index)
+        half = self.road_width_at_index(index) / 2
+        x, y = self.samples[index]
+        return (x - nx * half, y - ny * half), (x + nx * half, y + ny * half)
 
     def _build_mask(self, surface: pygame.Surface) -> np.ndarray:
         """Boolean array indexed [x, y]: True where the car may drive."""
         pixels = pygame.surfarray.array3d(surface)
-        road = np.all(pixels == np.array(self.cfg.road_color), axis=-1)
-        line = np.all(pixels == np.array(self.cfg.line_color), axis=-1)
-        return road | line
+        return np.all(pixels == np.array(self.cfg.road_color), axis=-1)
 
     def _build_clearance(self, max_radius: int = 72) -> np.ndarray:
         """For each pixel, a safe lower bound on the distance to the verge.

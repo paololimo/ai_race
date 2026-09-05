@@ -49,14 +49,21 @@ class Renderer:
         track: Track,
         cars: Sequence[Car],
         colors: Optional[Sequence[Tuple[int, int, int]]] = None,
+        start_index: int = 0,
     ) -> Optional[Car]:
         """Draw the circuit and the cars; return the current leader.
 
         `colors` gives one colour per car, for a race where each entrant must
         stay recognisable; without it every car is the same red and only the
         leader stands out, which is what a single evolving population wants.
+
+        The start line is drawn here rather than baked into the circuit, so it
+        marks where this generation actually began. A fixed line was worse than
+        no line: it said the lap started somewhere the cars had never been.
         """
         self.screen.blit(track.surface, (0, 0))
+        head, tail = track.start_line(start_index)
+        pygame.draw.line(self.screen, track.cfg.line_color, head, tail, 3)
         palette = {id(c): colors[i] for i, c in enumerate(cars)} if colors else {}
         alive = [c for c in cars if c.alive]
         leader = max(alive, key=lambda c: c.fitness, default=None)
