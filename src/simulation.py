@@ -77,7 +77,7 @@ class Simulation:
         cfg: SimulationConfig,
         render: bool = True,
         workers: int = 1,
-        shown: int = 8,
+        shown: int = 10,
         entries: Optional[Sequence[BrainRef]] = None,
     ) -> None:
         """`entries` overrides who is on the grid.

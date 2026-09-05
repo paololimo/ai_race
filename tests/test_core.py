@@ -1,10 +1,9 @@
-"""Smoke tests for the network, the genetic operators and the track."""
+"""Smoke tests for the genetic operators, the track and the car."""
 
 import numpy as np
 import pygame
 import pytest
 
-from src.brains.paololimo import NetworkConfig, NeuralNetwork, spec_from_config
 from src.config import CarConfig, GeneticConfig, track_variants
 from src.car import Car, network_input_size
 from src.genetic import crossover, mutate, next_generation, select_breeding_pool
@@ -12,6 +11,32 @@ from src.track import Track
 from src.track_check import widest_corridor
 
 INPUTS = network_input_size(CarConfig())
+
+
+class StubBrain:
+    """Something for a car to drive with.
+
+    These tests are about the track, the physics and the genetic operators, so
+    they need *a* brain, not any entrant in particular — and the repository is
+    handed to competing agents with every entrant but their own removed, so
+    naming one here would stop that copy from collecting at all.
+    """
+
+    def __init__(self, input_size: int, rng: np.random.Generator, still: bool = False) -> None:
+        self.w = np.zeros((input_size, 2)) if still else rng.normal(0.0, 0.4, (input_size, 2))
+
+    @property
+    def genome_size(self) -> int:
+        return self.w.size
+
+    def forward(self, inputs: np.ndarray) -> np.ndarray:
+        return np.tanh(inputs @ self.w)
+
+    def get_genome(self) -> np.ndarray:
+        return self.w.ravel()
+
+    def set_genome(self, genome: np.ndarray) -> None:
+        self.w = genome.reshape(self.w.shape)
 
 
 @pytest.fixture(scope="module")
@@ -23,31 +48,6 @@ def rng() -> np.random.Generator:
 def track() -> Track:
     pygame.init()
     return Track(track_variants()[0])
-
-
-def test_forward_shape_and_range(rng: np.random.Generator) -> None:
-    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng)
-    out = net.forward(np.ones(INPUTS))
-    assert out.shape == (2,)
-    assert np.all(np.abs(out) <= 1.0)
-
-
-def test_genome_roundtrip(rng: np.random.Generator) -> None:
-    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng)
-    genome = net.get_genome()
-    h1, h2 = NetworkConfig().hidden_sizes
-    assert genome.size == INPUTS * h1 + h1 * h2 + h2 * 2 + h1 + h2 + 2
-    assert INPUTS == CarConfig().num_sensors + 1  # one ray each, plus speed
-    inputs = rng.random(INPUTS)
-    expected = net.forward(inputs)
-    net.set_genome(genome)
-    assert np.allclose(net.forward(inputs), expected)
-
-
-def test_set_genome_rejects_wrong_size(rng: np.random.Generator) -> None:
-    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng)
-    with pytest.raises(ValueError):
-        net.set_genome(np.zeros(3))
 
 
 def test_crossover_takes_genes_from_both_parents(rng: np.random.Generator) -> None:
@@ -108,7 +108,7 @@ def test_nearest_index_matches_brute_force(track: Track) -> None:
 
 
 def test_progress_tracks_distance_along_the_lap(track: Track, rng: np.random.Generator) -> None:
-    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), CarConfig())
+    car = Car(track, StubBrain(INPUTS, rng), CarConfig())
     # Teleport forward along the centreline; progress must follow the arc length.
     for step in range(1, 20):
         car.x, car.y = track.samples[step * 5]
@@ -117,7 +117,7 @@ def test_progress_tracks_distance_along_the_lap(track: Track, rng: np.random.Gen
 
 
 def test_car_senses_and_dies_off_road(track: Track, rng: np.random.Generator) -> None:
-    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), CarConfig())
+    car = Car(track, StubBrain(INPUTS, rng), CarConfig())
     readings = car.sense()
     assert readings.shape == (INPUTS,)
     assert np.all((readings >= 0.0) & (readings <= 1.0))
@@ -130,9 +130,7 @@ def test_car_senses_and_dies_off_road(track: Track, rng: np.random.Generator) ->
 
 def test_idle_car_is_killed(track: Track, rng: np.random.Generator) -> None:
     cfg = CarConfig(idle_frames_allowed=5)
-    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), cfg)
-    car.brain.weights = [np.zeros_like(w) for w in car.brain.weights]
-    car.brain.biases = [np.zeros_like(b) for b in car.brain.biases]
+    car = Car(track, StubBrain(INPUTS, rng, still=True), cfg)
     for _ in range(cfg.idle_frames_allowed):
         car.update()
     assert not car.alive
@@ -152,37 +150,6 @@ def test_fitness_rewards_the_weakest_circuit_not_the_sum() -> None:
 
     fitness = simulation._aggregate(scores)
     assert fitness[1] > fitness[0], "the all-rounder must win on the real fitness"
-
-
-def test_saved_model_carries_its_own_architecture(tmp_path) -> None:
-    """A checkpoint must stay usable after the entrant's defaults change.
-
-    It records the architecture it was trained with, not just the layer sizes:
-    `symmetric` changes what the same weights compute, so dropping it raced a
-    model nobody had trained.
-    """
-    from dataclasses import replace as dc_replace
-
-    from src.brains import BrainRef
-    from src.config import SimulationConfig
-    from src.simulation import Simulation
-
-    cfg = dc_replace(SimulationConfig(), checkpoint_dir=str(tmp_path))
-    trainer = Simulation(cfg, render=False)
-    squad = next(s for s in trainer.squads if s.name == "paololimo")
-    odd = NetworkConfig(hidden_sizes=(9, 7), symmetric=True)  # not the defaults
-    squad.brain = BrainRef("paololimo", spec_from_config(odd))
-    brain = NeuralNetwork(trainer.input_size, spec_from_config(odd), np.random.default_rng(0))
-    squad.best_genome = brain.get_genome()
-    squad.best_fitness = 1.23
-    trainer.save_all()
-
-    loader = Simulation(cfg, render=False)
-    fresh = next(s for s in loader.squads if s.name == "paololimo")
-    genome = loader.load_champion(fresh)
-    assert tuple(fresh.brain.spec["hidden_sizes"]) == (9, 7)
-    assert fresh.brain.spec["symmetric"] is True
-    assert genome.size == brain.genome_size
 
 
 def test_clearance_field_never_overestimates(track: Track) -> None:
@@ -207,7 +174,7 @@ def test_clearance_field_never_overestimates(track: Track) -> None:
 
 def test_ray_stops_at_the_verge(track: Track, rng: np.random.Generator) -> None:
     """Whatever the stepping strategy, a ray must land on the edge of the road."""
-    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), CarConfig())
+    car = Car(track, StubBrain(INPUTS, rng), CarConfig())
     for angle in np.linspace(0, 2 * np.pi, 40, endpoint=False):
         distance, _ = car._cast_wall_ray(float(np.cos(angle)), float(np.sin(angle)))
         if distance >= car.cfg.sensor_range:

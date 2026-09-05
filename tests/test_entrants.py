@@ -32,9 +32,14 @@ def config(tmp_path, **overrides) -> SimulationConfig:
 
 
 def test_every_file_in_brains_is_an_entrant() -> None:
-    """Dropping a file in is the whole installation — nothing else to edit."""
+    """Dropping a file in is the whole installation — nothing else to edit.
+
+    No entrant is named here on purpose: the repository is handed to competing
+    agents with the other entries removed, so the suite has to pass on a copy
+    holding nothing but the reader's own file.
+    """
     found = entrants()
-    assert "paololimo" in found, "the project's own entrant must be discovered"
+    assert found, "no entrants discovered in src/brains/"
     assert len(found) == len(BRAIN_FACTORY)
 
 
@@ -138,6 +143,7 @@ def test_a_broken_entrant_does_not_take_the_race_down(tmp_path) -> None:
 
     import src.brains as brains
 
+    standing = brains.entrants()
     broken = tmp_path / "wreck.py"
     broken.write_text("this is not python(")
     brains.__path__.append(str(tmp_path))
@@ -145,7 +151,7 @@ def test_a_broken_entrant_does_not_take_the_race_down(tmp_path) -> None:
     try:
         found = brains.entrants()
         assert "wreck" not in found
-        assert "paololimo" in found
+        assert found == standing, "a broken file must not cost anyone else their place"
     finally:
         brains.__path__.remove(str(tmp_path))
         brains._DISCOVERED = False

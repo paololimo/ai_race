@@ -109,6 +109,25 @@ separate obstacle channel.
 Values outside `[-1, 1]` are not clipped for you and would give you physics no
 other entrant is subject to. Bound them yourself.
 
+**Optional: `describe()`** — implement it and the dashboard draws your real
+structure; leave it out and it draws your measured input-to-output response
+instead. Nothing about the race changes either way. `layers` are
+`(label, node count, column)`; two layers may share a column, which is how
+parallel streams are drawn, and an edge spanning more than one column is a skip.
+
+```python
+from src.brains import Topology
+
+    def describe(self) -> Topology:
+        return Topology(
+            layers=(("sensors", 8, 0), ("hidden", 16, 1), ("drive", 2, 2)),
+            edges=((0, 1, self.w1), (1, 2, self.w2)),
+        )
+```
+
+Each edge is `(from layer, to layer, weight matrix)`, the matrix shaped
+`(nodes in from, nodes in to)`.
+
 **Genome** — the genetic algorithm treats your flat vector as opaque: uniform
 crossover gene by gene, then gaussian noise (σ 0.3) on 5% of genes. Two
 consequences worth designing around:
@@ -144,13 +163,11 @@ consequences worth designing around:
 ## What you are judged on
 
 Laps completed on `gauntlet`, the circuit that appears in no training run.
-Nothing else. A larger network is not automatically better: 366 parameters is
-the incumbent, and the genetic algorithm's search gets harder as the genome
-grows. An inductive bias that shrinks the search without losing capacity is
-worth more than raw width — the incumbent offers one, an optional left/right
-symmetry that averages the network against its own mirror image, since the
-response to a wall on the left should be the mirror of the response to a wall on
-the right.
+Nothing else. A larger network is not automatically better: entries run to a few
+hundred parameters, and the genetic algorithm's search gets harder as the genome
+grows, so an inductive bias that shrinks the search without losing capacity is
+worth more than raw width. Which bias is the interesting part of the problem, and
+it is yours to find.
 
 ## Check your work
 

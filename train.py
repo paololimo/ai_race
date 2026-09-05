@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--shown",
         type=int,
-        default=8,
+        default=10,
         help="cars drawn per entrant; the whole population is scored regardless",
     )
     parser.add_argument(
