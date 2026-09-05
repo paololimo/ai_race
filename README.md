@@ -22,11 +22,12 @@ Neither command takes an entrant argument. The grid is whatever is in
 src/
 ├── brains/             # the competitors — one file each, and nothing else
 │   ├── __init__.py     # the registry: Brain protocol, discovery, colours
-│   ├── paololimo.py    # the hand-written network: 8 → 12 → 2, with a skip
+│   ├── paololimo.py    # the hand-written network: 8 → 10 → 4 → 2, with a skip
+│   ├── claude.py
 │   ├── codex.py
 │   └── gemini.py
 ├── config.py           # frozen dataclasses: circuits, car, GA, run
-├── genetic.py          # selection, uniform crossover, mutation, elitism
+├── genetic.py          # rank-weighted selection, crossover, annealed mutation
 ├── track.py            # procedural circuit generation + drivable mask
 ├── track_check.py      # geometric validation of a generated circuit
 ├── car.py              # physics, 7 ray sensors, braking, fitness
@@ -104,12 +105,17 @@ through a boolean road mask and a discrete death condition, neither of which has
 a useful derivative. `genetic.py` knows nothing about any architecture, which is
 why one algorithm can breed all of them.
 
-The hand-written entrant is `8 → 12 → 2` with `tanh`, a direct linear path from
-the sensors to the controls alongside the hidden one, and left/right symmetry
-imposed rather than learned: 150 parameters. It was `8 → 14 → 14 → 2` at 366
-until the arithmetic was done — 100 genomes over 120 generations is 12 000
-evaluations, and a derivative-free search wants 100 to 1000 of them per
+The hand-written entrant is `8 → 10 → 4 → 2` with `tanh`, a direct linear path
+from the sensors to the controls alongside the hidden ones, and left/right
+symmetry imposed rather than learned: 160 parameters. It was `8 → 14 → 14 → 2`
+at 366 until the arithmetic was done — 100 genomes over 120 generations is
+12 000 evaluations, and a derivative-free search wants 100 to 1000 of them per
 parameter, so 366 parameters were never going to be searched, only sampled.
+
+The hidden path is a funnel rather than one wide layer, at a cost of ten
+parameters: reading the ray fan is comparing each ray against its neighbours to
+find the gap, and *then* weighing that against own speed to set steering and
+braking, which is two stages one matrix would have to do at once.
 
 **Physics.** The car only moves forward. Steering authority grows with speed up
 to 1.5 px/frame and then saturates, which makes the turning radius
@@ -165,8 +171,29 @@ grid-city from 0.47 to 2.91 laps.
 against 2.3 of serpentine, quietly favouring the short circuit.
 
 **Evolution.** The top 30% form the breeding pool; the best four carry over
-untouched (elitism), the rest come from uniform crossover with gaussian mutation
-on 5% of genes. Every genome is evaluated on all three circuits before selection.
+untouched (elitism), the rest come from crossover of two parents drawn from the
+pool, with gaussian mutation on 5% of genes. Every genome is evaluated on all
+three circuits before selection.
+
+Two things about that search were wrong for a long time, both in `genetic.py`
+and so shared by every entrant equally.
+
+Parents were drawn *uniformly* from the pool, which threw away the ranking
+selection had just produced: the best genome in the pool and the one scraping
+the cut-off were equally likely to breed. They are now weighted by
+log-decreasing rank, the weighting the evolution-strategy literature settles on
+— the population's shift from one generation to the next is a noisy estimate of
+the direction fitness improves in, and this is the weighting that estimates it
+best. The effective pool size (`1 / Σw²`) goes from 30 to 16.6, so the ranking
+is used without the diversity collapsing.
+
+Mutation size was a fixed 0.3 against a typical weight of 0.27 — a mutated gene
+was not perturbed but effectively redrawn, and it was as violent at generation
+120 as at generation 1, so nothing could ever be refined and only the untouched
+elites carried progress. It now decays geometrically to 0.03 across the run:
+`σ/|w|` runs 1.11 → 0.11. Geometrically rather than linearly because the useful
+quantity is the ratio of the step to the weights, so equal fractions of the run
+should shrink it by equal factors.
 
 **Against memorisation.** Each generation starts from a different point on the
 lap and meets a different island layout (four pre-built arrangements per
