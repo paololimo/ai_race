@@ -1,6 +1,23 @@
-"""Pygame window: the circuit on the left, the dashboard panel on the right."""
+"""Pygame window: the circuit and the standings on top, the analyses beneath.
+
+    +--------------------------+---------+
+    |                          | panel   |   the circuit, drawn at whatever
+    |         circuit          | one     |   scale the display allows, and one
+    |                          | card    |   card per entrant beside it
+    |                          | each    |
+    +--------------------------+---------+
+    |        analyses, the full width     |   everything about the search
+    +-------------------------------------+
+
+The circuit is drawn at its native 1000x700 onto an off-screen surface and
+scaled on the way to the window. Without that the window is 1100 px tall before
+anything is on screen, which is more than a 900 px display has — and the strip
+was then dropped, which is how the analyses came to be invisible on the machine
+they were written for.
+"""
 
 import math
+from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
 import pygame
@@ -10,11 +27,27 @@ from src.track import Track
 
 _SENSOR_COLOR = (90, 200, 250)
 
-# Room for the window frame, the title bar and whatever the desktop keeps at
-# the edges of the screen.
-_CHROME_W, _CHROME_H = 60, 120
+# Room for the window frame, the title bar, the menu bar and the dock.
+_CHROME_W, _CHROME_H = 60, 90
 _MIN_PANEL = 340
 _MIN_STRIP = 150  # below this the analyses are unreadable, so there are none
+# The circuit shrinks to make room for the analyses, but only so far: past this
+# the cars are too small to follow, and the strip is not worth what it costs.
+_MIN_SCALE = 0.62
+
+
+@dataclass(frozen=True)
+class Layout:
+    """Where everything goes, once the display has had its say."""
+
+    view: Tuple[int, int]  # the circuit as drawn, which may be scaled down
+    panel: int  # width of the standings column, beside the circuit
+    strip: int  # height of the analyses, across the full width; 0 if none
+    scale: float  # what the circuit was shrunk by; 1.0 if not at all
+
+    @property
+    def window(self) -> Tuple[int, int]:
+        return (self.view[0] + self.panel, self.view[1] + self.strip)
 
 
 def fit_window(
@@ -22,16 +55,15 @@ def fit_window(
     panel: int,
     strip: int,
     screen: Optional[Tuple[int, int]] = None,
-) -> Tuple[int, int]:
-    """Panel width and strip height that still fit this display.
+) -> Layout:
+    """Fit the circuit, the panel and the analyses onto this display.
 
-    The window wants a panel beside the circuit and a strip of analyses under
-    it, which together ask for more than a small screen has. Rather than pick
-    one size that is either cramped everywhere or off the edge somewhere, ask
-    the display; if it cannot be asked, take the request at face value.
-
-    A strip too short to read is returned as no strip at all. Half an analysis
-    is worse than none: the panel keeps the standings either way.
+    The request — a 1000x700 circuit, a panel beside it and a 280 px strip
+    underneath — is 1380x980, which a 1440x900 laptop cannot show. Something has
+    to give, and the order matters: the analyses are the whole point of the
+    strip, so the circuit is scaled down to make room for them rather than the
+    strip being dropped to keep the circuit at full size. Only when even a
+    shrunken circuit leaves no readable strip is the strip given up.
 
     `screen` overrides what the display reports, which is the only way to test
     the arithmetic without owning the monitor it runs on.
@@ -41,28 +73,40 @@ def fit_window(
             info = pygame.display.Info()
             screen = (info.current_w, info.current_h)
         except pygame.error:
-            return panel, strip
-    available_w, available_h = screen
-    if available_w <= track[0] or available_h <= track[1]:  # no display, or a dummy one
-        return panel, strip
-    panel = max(_MIN_PANEL, min(panel, available_w - track[0] - _CHROME_W))
-    strip = min(strip, max(0, available_h - track[1] - _CHROME_H))
-    return panel, (strip if strip >= _MIN_STRIP else 0)
+            return Layout(track, panel, strip, 1.0)
+
+    room_w, room_h = screen[0] - _CHROME_W, screen[1] - _CHROME_H
+    if room_w <= track[0] // 2 or room_h <= track[1] // 2:  # no display, or a dummy one
+        return Layout(track, panel, strip, 1.0)
+
+    panel = max(_MIN_PANEL, min(panel, room_w - int(track[0] * _MIN_SCALE)))
+    scale = min(1.0, (room_w - panel) / track[0], (room_h - strip) / track[1])
+
+    if scale < _MIN_SCALE:
+        # The strip cannot have all it asked for. Give the circuit its floor and
+        # let the strip take whatever is left of the height, or nothing.
+        scale = min(1.0, (room_w - panel) / track[0], _MIN_SCALE)
+        strip = int(room_h - track[1] * scale)
+        if strip < _MIN_STRIP:
+            strip = 0
+            scale = min(1.0, (room_w - panel) / track[0], room_h / track[1])
+
+    view = (int(track[0] * scale), int(track[1] * scale))
+    return Layout(view, panel, max(0, strip), scale)
 
 
 class Renderer:
-    """Owns the window. Track drawing here, panel content in `Dashboard`."""
+    """Owns the window. Track drawing here, panel and strip content elsewhere."""
 
-    def __init__(
-        self, track_size: Tuple[int, int], panel_width: int, fps: int, strip_height: int = 0
-    ) -> None:
+    def __init__(self, track_size: Tuple[int, int], layout: Layout, fps: int) -> None:
         self.track_size = track_size
-        self.panel_width = panel_width
-        self.strip_height = strip_height
+        self.layout = layout
         self.fps = fps
-        self.screen = pygame.display.set_mode(
-            (track_size[0] + panel_width, track_size[1] + strip_height)
-        )
+        self.screen = pygame.display.set_mode(layout.window)
+        # The circuit is always drawn at its own coordinates and scaled once, on
+        # the way out. Scaling the coordinates instead would mean scaling every
+        # car, every sensor ray and the start line, in three separate places.
+        self.view = pygame.Surface(track_size)
         pygame.display.set_caption("cars_ai - evolutionary self-driving cars")
         self.clock = pygame.time.Clock()
 
@@ -84,7 +128,7 @@ class Renderer:
             (car.x + cx * cos_a - cy * sin_a, car.y + cx * sin_a + cy * cos_a)
             for cx, cy in corners
         ]
-        pygame.draw.polygon(self.screen, color, points)
+        pygame.draw.polygon(self.view, color, points)
 
     def draw_track(
         self,
@@ -103,21 +147,25 @@ class Renderer:
         marks where this generation actually began. A fixed line was worse than
         no line: it said the lap started somewhere the cars had never been.
         """
-        self.screen.blit(track.surface, (0, 0))
+        self.view.blit(track.surface, (0, 0))
         head, tail = track.start_line(start_index)
-        pygame.draw.line(self.screen, track.cfg.line_color, head, tail, 3)
+        pygame.draw.line(self.view, track.cfg.line_color, head, tail, 3)
         alive = [(car, color) for car, color in zip(cars, colors) if car.alive]
         for car, color in alive:
             self._draw_car(car, color)
         leader = max((car for car, _ in alive), key=lambda c: c.fitness, default=None)
         if leader is not None:
             for endpoint in leader.sensor_endpoints:
-                pygame.draw.line(self.screen, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
+                pygame.draw.line(self.view, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
 
     def present(self, panel: pygame.Surface, strip: Optional[pygame.Surface] = None) -> None:
-        """Blit the panel, then the analysis strip under the circuit, and flip."""
-        self.screen.blit(panel, (self.track_size[0], 0))
+        """Scale the circuit into place, blit the panel and the strip, and flip."""
+        if self.layout.scale >= 1.0:
+            self.screen.blit(self.view, (0, 0))
+        else:
+            self.screen.blit(pygame.transform.smoothscale(self.view, self.layout.view), (0, 0))
+        self.screen.blit(panel, (self.layout.view[0], 0))
         if strip is not None:
-            self.screen.blit(strip, (0, self.track_size[1]))
+            self.screen.blit(strip, (0, self.layout.view[1]))
         pygame.display.flip()
         self.clock.tick(self.fps)

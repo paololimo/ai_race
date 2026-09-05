@@ -25,14 +25,14 @@ ACCENT = (255, 176, 60)
 POSITIVE = (110, 220, 150)
 NEGATIVE = (235, 100, 110)
 
+# Where the brain diagram starts, leaving the three rows of text their width.
+_TEXT_COLUMN = 194
+
 # Sensors are probed around mid-range: half-open road, half speed. Reading the
 # response at the extremes would mostly show tanh saturation rather than what
 # the brain does while driving.
 _PROBE_LEVEL = 0.5
 _PROBE_STEP = 0.05
-
-_STATS_HEIGHT = 112
-
 
 @dataclass(frozen=True)
 class Entry:
@@ -271,59 +271,39 @@ class Dashboard:
         """Share the space between the cards, whatever is left after the stats."""
         return int(np.clip(room / max(1, count) - 8, 46, 190))
 
-    def _entries(
-        self, y: int, entries: Sequence[Entry], card_height: int
-    ) -> int:
-        """One card per entrant: the standing, then its brain underneath.
+    def _entries(self, y: int, entries: Sequence[Entry], card_height: int) -> int:
+        """One card per entrant: the standing on the left, its brain beside it.
 
-        The diagram sits below the text rather than beside it. Beside, it was
-        150 px wide against the 356 the card has, because the detail line ran
-        to x=196 and there was nothing to be done about it. Underneath it gets
-        the full width and whatever height the card has left, which with the
-        analyses moved out from under the cards is most of it.
+        Beside, not underneath. The nodes of a network are laid out down the
+        card, so what a diagram needs is height, and beside the text it gets the
+        whole card instead of whatever three rows of text leave over. Under a
+        short card — and beside the circuit the panel is only as tall as the
+        circuit is drawn — the diagram came out 40 px tall and flat.
 
-        Where a card is too short for a legible diagram it is dropped rather
-        than drawn as a smear.
+        That costs width, so the text is three tight rows and the parameter
+        count shares a line with the laps rather than taking one of its own.
         """
         for entry in sorted(entries, key=lambda e: -e.laps):
             top = self._card(12, y, self.width - 24, card_height)
             pygame.draw.rect(
                 self.surface, entry.color, pygame.Rect(24, y + 9, 10, 10), border_radius=2
             )
-            self._text(entry.name[:12], 42, y + 6, self.font)
-            # The parameter count belongs next to the name: it is the one number
-            # that says what an entrant actually bet on, and the whole argument
-            # about budget turns on it.
-            self._text(f"{entry.params} par", self.width - 92, y + 8, self.font_small, MUTED)
+            self._text(entry.name[:11], 42, y + 6, self.font)
             self._text(f"{entry.laps:5.2f} laps", 42, top + 2, self.font, ACCENT)
+            # The parameter count is the one number that says what an entrant
+            # bet on, and the whole argument about the search budget turns on it.
+            self._text(f"{entry.params} par", 132, top + 5, self.font_small, MUTED)
             detail = f"best {entry.best:.2f}"
             if entry.shown:
-                detail += f"   {entry.alive}/{entry.shown} alive"
+                detail += f"  {entry.alive}/{entry.shown}"
             self._text(detail, 42, top + 20, self.font_small, MUTED)
 
-            room = card_height - 70
-            if entry.brain is not None and room >= 24:
-                inner = (self.width - 48, room)
-                self.surface.blit(self._cached_diagram(entry.brain, inner), (24, y + 64))
+            width = self.width - 24 - _TEXT_COLUMN
+            if entry.brain is not None and width >= 90 and card_height >= 56:
+                inner = (width, card_height - 16)
+                self.surface.blit(self._cached_diagram(entry.brain, inner), (_TEXT_COLUMN, y + 8))
             y += card_height + 8
         return y
-
-    def _stats(self, y: int, height: int, stats: Sequence[Tuple[str, str]]) -> None:
-        """Labelled numbers about the run itself.
-
-        Not everything worth watching is a curve. What the mutation size is
-        *right now* is one number, and since it anneals it is a different number
-        every generation; how many evaluations have been spent is the quantity
-        the whole architecture argument turns on. Both are invisible in any
-        chart here, and both are one line of text.
-        """
-        top = self._card(12, y, self.width - 24, height, "RUN")
-        for i, (label, value) in enumerate(stats):
-            row = top + 2 + i * 15
-            if row > y + height - 14:
-                return
-            self._text(label, 24, row, self.font_small, MUTED)
-            self._text(value, 132, row, self.font_small, TEXT)
 
     # -- assembly ------------------------------------------------------------
 
@@ -336,23 +316,20 @@ class Dashboard:
         frame: int,
         max_frames: int,
         entries: Sequence[Entry],
-        stats: Sequence[Tuple[str, str]] = (),
     ) -> pygame.Surface:
         """The panel: who is ahead, what they are, and where the run is.
 
-        The analyses are not here — they are on the strip under the circuit,
-        which is space the window was wasting. That is what lets these cards be
+        Nothing about the search is here — it is all on the strip below, which
+        runs the full width of the window. That is what lets these cards be
         tall enough for a brain diagram anyone can actually read.
         """
         self.surface.fill(BG)
         top = self._header(
             generation, track_name, track_number, len(circuits), frame, max_frames
         )
-        stats_height = min(_STATS_HEIGHT, self.height // 4) if stats else 0
-        room = self.height - top - 16 - (stats_height + 8 if stats_height else 0)
-        bottom = self._entries(top + 2, entries, self._card_height(room, len(entries)))
-        if stats_height:
-            self._stats(max(bottom + 2, self.height - stats_height - 12), stats_height, stats)
+        self._entries(
+            top + 2, entries, self._card_height(self.height - top - 16, len(entries))
+        )
         return self.surface
 
 

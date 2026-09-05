@@ -134,17 +134,22 @@ class Simulation:
         size = (first.width, first.height)
         # The window is asked for more than a small screen has, and shrinks to
         # what this display actually offers rather than running off the edge.
-        panel, strip = (
-            fit_window(size, cfg.dashboard_width, cfg.strip_height)
-            if render
-            else (cfg.dashboard_width, cfg.strip_height)
-        )
-        self.renderer = Renderer(size, panel, cfg.fps, strip) if render else None
+        layout = fit_window(size, cfg.dashboard_width, cfg.strip_height)
+        self.renderer = Renderer(size, layout, cfg.fps) if render else None
+        # The panel stands beside the circuit, so it is as tall as the circuit
+        # is drawn; the strip runs under both, so it is as wide as the window.
         self.dashboard = (
-            Dashboard(panel, size[1] + strip, self.input_size) if render else None
+            Dashboard(layout.panel, layout.view[1], self.input_size) if render else None
         )
-        self.analysis = Analysis(size[0], strip) if render and strip else None
+        self.analysis = (
+            Analysis(layout.window[0], layout.strip) if render and layout.strip else None
+        )
         self._started = time.monotonic()
+        # How long each finished generation took. The estimate must not be
+        # divided by the generation in progress: within one, the elapsed time
+        # grows while the divisor does not, so the estimate climbs steadily and
+        # only falls back at each boundary. Only finished ones count.
+        self._per_generation: List[float] = []
         grid = list(entries) if entries is not None else [BrainRef(n) for n in entrants()]
         self.squads: List[Squad] = [self._recruit(ref) for ref in grid]
         if not self.squads:
@@ -296,9 +301,12 @@ class Simulation:
             frame=frame,
             max_frames=stage.budget,
             entries=entries,
-            stats=self._stats(generation),
         )
-        strip = self.analysis.render(series, circuits) if self.analysis else None
+        strip = (
+            self.analysis.render(series, circuits, self._stats(generation))
+            if self.analysis
+            else None
+        )
         self.renderer.present(panel, strip)
 
     def _stats(self, generation: int) -> List[Tuple[str, str]]:
@@ -312,15 +320,18 @@ class Simulation:
         """
         total = max(1, self.cfg.generations)
         progress = (generation - 1) / max(1, total - 1)
-        elapsed = time.monotonic() - self._started
-        done = max(0, generation - 1) * self.cfg.genetic.population_size
-        remaining = elapsed / generation * (total - generation) if generation else 0.0
+        done = max(0, generation - 1)
+        scored = done * self.cfg.genetic.population_size * len(self.squads)
+        # The mean of the last few finished generations, which is stable inside
+        # a generation and follows the machine if it speeds up or slows down.
+        recent = self._per_generation[-5:]
+        left = sum(recent) / len(recent) * (total - done) if recent else None
         return [
             ("generation", f"{generation} / {total}"),
             ("mutation", f"{mutation_sigma(self.cfg.genetic, progress):.3f}"),
-            ("evaluated", f"{done * len(self.squads):,}".replace(",", " ")),
-            ("elapsed", _clock(elapsed)),
-            ("remaining", _clock(remaining) if generation > 1 else "--:--"),
+            ("evaluated", f"{scored:,}".replace(",", " ")),
+            ("elapsed", _clock(time.monotonic() - self._started)),
+            ("remaining", _clock(left) if left is not None else "--:--"),
         ]
 
     def _evaluate(self, stage: Stage, generation: int) -> Tuple[Dict[int, List[float]], bool]:
@@ -364,7 +375,9 @@ class Simulation:
     # -- training ------------------------------------------------------------
 
     def train(self) -> None:
+        self._started = time.monotonic()
         for generation in range(1, self.cfg.generations + 1):
+            began = time.monotonic()
             # How far through the run we are, which is what the mutation size is
             # annealed against. Shared by every squad, like everything else the
             # comparison rests on.
@@ -397,6 +410,7 @@ class Simulation:
                     squad.genomes, list(totals), self.cfg.genetic, squad.rng, progress
                 )
 
+            self._per_generation.append(time.monotonic() - began)
             logger.info(
                 "gen %3d | %s",
                 generation,

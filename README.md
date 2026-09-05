@@ -31,8 +31,8 @@ src/
 ├── track.py            # procedural circuit generation + drivable mask
 ├── track_check.py      # geometric validation of a generated circuit
 ├── car.py              # physics, 7 ray sensors, braking, fitness
-├── renderer.py         # window: circuit, panel on the right, strip below
-├── dashboard.py        # panel: standings, brain diagrams, run stats
+├── renderer.py         # window layout, circuit scaling, car drawing
+├── dashboard.py        # panel: standings and each entrant's own network
 ├── analysis.py         # strip: progress, genetic spread, per-circuit bars
 ├── simulation.py       # the generational loop, and the race
 ├── parallel.py         # population scoring across worker processes
@@ -239,21 +239,34 @@ of wall-clock time. For a real run use `--headless`.
 
 ## Dashboard
 
-1380×980: the circuit top-left, the panel down the right, and a strip of
-analyses under the circuit — space the window used to waste, which is what
-leaves the panel cards tall enough to draw a brain in. The window shrinks to
-whatever the display actually offers (`renderer.fit_window`); a screen too
-short for the strip gets the panel alone rather than a window running off the
-bottom.
+```
++--------------------------+---------+
+|         circuit          | panel   |
++--------------------------+---------+
+|      analyses, full width          |
++------------------------------------+
+```
+
+1380×980 given the room: the circuit and the standings side by side, the
+analyses across the whole width beneath both.
+
+**It rarely has the room.** That window is taller than a 1440×900 laptop can
+show, so `renderer.fit_window` scales the circuit down until the strip fits —
+on a 900 px display, to 76%, giving a 1137×810 window. The circuit gives way
+rather than the analyses, because the analyses are what the strip is for; only
+when even a floored circuit leaves nothing readable is the strip dropped. The
+circuit is drawn at its native 1000×700 onto an off-screen surface and scaled
+once on the way out, so no car, ray or start line has to know about it.
 
 **Panel.** Generation, current circuit (`TRACK k/3`), progress through the
 frame budget, then one card per entrant in its colour, ordered by who is
-furthest round: laps, best so far, how many of the drawn cars are alive, its
-parameter count, and its own network drawn full width. Then a `RUN` card —
-generation, the *current* mutation size (it anneals, so it is a different
-number every generation), evaluations spent, elapsed and remaining.
+furthest round: laps, parameter count, best so far, how many of the drawn cars
+are alive — and its own network beside the text. Beside, not under: nodes are
+laid out down the card, so a diagram wants height, and beside the text it gets
+the whole card rather than what three rows of text leave over.
 
-**Strip.** Three questions a neuroevolution run cannot be read without:
+**Strip.** Three questions a neuroevolution run cannot be read without, plus
+the numbers that are not curves:
 
 - **Best so far.** The running maximum per entrant, which is monotonic and is
   the only line here that means progress. The raw per-generation best is kept
@@ -268,6 +281,11 @@ number every generation), evaluations spent, elapsed and remaining.
   `worst + 0.35 × mean`, so an entrant's solid bar is its weakest circuit —
   the one actually leading its number, and until now summed away before anyone
   could see it.
+- **Run.** Generation, the *current* mutation size (it anneals, so it is a
+  different number every generation), evaluations spent, elapsed and remaining.
+  The estimate divides by *finished* generations: dividing by the one in
+  progress made it climb steadily and jump back at each boundary, because the
+  elapsed time grows while the divisor does not.
 
 Everything grows by itself when an entrant is added.
 

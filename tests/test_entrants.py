@@ -149,23 +149,34 @@ def test_the_window_shrinks_to_the_display_rather_than_overflowing_it() -> None:
     from src.renderer import fit_window
 
     track = (1000, 700)
-    assert fit_window(track, 380, 280, screen=(2560, 1440)) == (380, 280)
 
-    # A 1440 x 900 laptop: the panel still fits, the strip does not, and half a
-    # strip is worse than none.
-    panel, strip = fit_window(track, 380, 280, screen=(1440, 900))
-    assert panel == 380 and strip == 0
+    # Room for everything: nothing is scaled, nothing is dropped.
+    roomy = fit_window(track, 380, 280, screen=(2560, 1440))
+    assert roomy.scale == 1.0 and roomy.strip == 280 and roomy.window == (1380, 980)
 
-    # Tall enough for some strip, but not all of it: it is trimmed, not dropped.
-    panel, strip = fit_window(track, 380, 280, screen=(1440, 1050))
-    assert panel == 380 and 150 <= strip < 280
+    # A 1440 x 900 laptop cannot show 1380 x 980. The analyses are the point of
+    # the strip, so the circuit shrinks to make room for them rather than the
+    # strip being dropped to keep the circuit at full size.
+    laptop = fit_window(track, 380, 280, screen=(1440, 900))
+    assert laptop.strip == 280, "the strip is what the height is for"
+    assert 0.6 < laptop.scale < 1.0, "the circuit gave way instead"
+    assert laptop.window[0] <= 1440 - 60 and laptop.window[1] <= 900 - 90
+
+    # Shorter still: the circuit hits its floor and the strip takes what is
+    # left of the height rather than the full 280 it asked for.
+    tight = fit_window(track, 380, 280, screen=(1440, 700))
+    assert 150 <= tight.strip < 280 and tight.scale < laptop.scale
+
+    # Too short even for a floored circuit plus a readable strip: no strip, and
+    # the circuit takes the height back rather than staying small for nothing.
+    short = fit_window(track, 380, 280, screen=(1440, 660))
+    assert short.strip == 0 and short.scale > tight.scale
 
     # Narrow: the panel is trimmed rather than pushing the circuit off the edge.
-    panel, _ = fit_window(track, 380, 280, screen=(1400, 1440))
-    assert panel < 380
+    assert fit_window(track, 380, 280, screen=(1000, 1440)).panel < 380
 
     # No display to ask (a dummy driver reports nonsense): take the request.
-    assert fit_window(track, 380, 280, screen=(0, 0)) == (380, 280)
+    assert fit_window(track, 380, 280, screen=(0, 0)).window == (1380, 980)
 
 
 def test_discovery_order_cannot_change_a_result(tmp_path) -> None:
@@ -295,20 +306,20 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
 
     assert described + measured == len(entrants())
     circuits = ["serpentine", "grid-city", "speedway"]
-    panel = Dashboard(380, 980, INPUTS).render(
+    panel = Dashboard(380, 700, INPUTS).render(
         generation=1, track_name="serpentine", track_number=1, circuits=circuits,
         frame=1, max_frames=100, entries=entries,
-        stats=[("generation", "1 / 120"), ("mutation", "0.300")],
     )
-    assert panel.get_size() == (380, 980)
+    assert panel.get_size() == (380, 700)
 
     # And the strip, which is where the analyses live: it must survive being
     # handed one generation of history, which is what it gets on the first frame.
-    strip = Analysis(1000, 280).render(
+    strip = Analysis(1380, 280).render(
         [Series(e.name, e.color, [0.1, 0.2], [0.3, 0.28], [0.4, 0.5, 0.6]) for e in entries],
         circuits,
+        [("generation", "1 / 120"), ("mutation", "0.300")],
     )
-    assert strip.get_size() == (1000, 280)
+    assert strip.get_size() == (1380, 280)
 
 
 def test_response_reads_a_brain_without_touching_its_weights() -> None:

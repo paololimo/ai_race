@@ -156,13 +156,40 @@ class Analysis:
 
     # -- assembly ------------------------------------------------------------
 
-    def render(self, series: Sequence[Series], circuits: Sequence[str]) -> pygame.Surface:
+    def _run(self, x: int, width: int, stats: Sequence[Tuple[str, str]]) -> None:
+        """Labelled numbers about the run itself.
+
+        Not everything worth watching is a curve. The mutation size is one
+        number, and since it anneals it is a different one every generation;
+        the evaluation count is the quantity the whole argument about how many
+        parameters an entrant can afford turns on. Neither appears in any chart
+        here, and both are one line of text.
+        """
+        plot = self._panel(x, width, "RUN", "")
+        for i, (label, value) in enumerate(stats):
+            row = plot.y + i * 17
+            if row + 12 > plot.bottom:
+                return
+            self._text(label, plot.x, row, MUTED)
+            self._text(value, plot.x + 96, row, TEXT)
+
+    def render(
+        self,
+        series: Sequence[Series],
+        circuits: Sequence[str],
+        stats: Sequence[Tuple[str, str]] = (),
+    ) -> pygame.Surface:
         self.surface.fill(BG)
         gap = 10
-        width = (self.width - gap * 4) // 3
+        # The run stats are a narrow column of text; the three charts share the
+        # rest of the width equally.
+        run = 210 if stats else 0
+        width = (self.width - gap * (4 if not stats else 5) - run) // 3
         self._progress(gap, width, series)
         self._spread(gap * 2 + width, width, series)
         self._circuits(gap * 3 + width * 2, width, series, circuits)
+        if stats:
+            self._run(gap * 4 + width * 3, run, stats)
         return self.surface
 
 
