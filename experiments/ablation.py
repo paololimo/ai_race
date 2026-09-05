@@ -35,7 +35,7 @@ import tempfile
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 
@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.brains import BrainRef, build_brain  # noqa: E402
 from src.brains.paololimo import NetworkConfig, spec_from_config  # noqa: E402
+from src.car import network_input_size  # noqa: E402
 from src.config import SimulationConfig  # noqa: E402
 from src.simulation import Simulation  # noqa: E402
 
@@ -122,8 +123,6 @@ BIASES: Tuple[Variant, ...] = (
     Variant("14 all", (14,), symmetric=True, skip=True, decoupled=True),
 )
 
-ARCHITECTURES: Tuple[Variant, ...] = SIZES + DEPTHS + BIASES
-
 # Harness: uniform crossover splits a neuron's incoming weights between parents,
 # so recombination behaves closer to heavy mutation than to inheritance. Cutting
 # the vector into runs keeps co-adapted groups together; dropping crossover
@@ -135,8 +134,6 @@ OPERATORS: Tuple[Variant, ...] = (
     Variant("two-point", crossover="two-point"),
     Variant("mutation only", crossover="none"),
 )
-
-VARIANTS: Tuple[Variant, ...] = ARCHITECTURES + OPERATORS
 
 # One question per group, so they can be run one at a time. The whole grid at
 # seven seeds is hours; each group on its own is a fraction of that, and the
@@ -150,7 +147,7 @@ GROUPS: Dict[str, Tuple[Tuple[Variant, ...], str]] = {
 }
 
 
-def parameter_count(variant: Variant, cfg: SimulationConfig, inputs: int) -> int:
+def parameter_count(variant: Variant, inputs: int) -> int:
     return build_brain(variant.ref(), inputs, np.random.default_rng(0)).genome_size
 
 
@@ -217,13 +214,13 @@ def main() -> None:
     args = parser.parse_args()
 
     chosen = list(GROUPS) if "all" in args.group else args.group
-    groups = [(GROUPS[name][0], GROUPS[name][1]) for name in chosen]
+    groups = [GROUPS[name] for name in chosen]
     selected = [variant for group, _ in groups for variant in group]
     out = args.out or Path("outputs") / f"ablation_{'_'.join(chosen)}.json"
 
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     base = SimulationConfig()
-    inputs = base.car.num_sensors + 1
+    inputs = network_input_size(base.car)
 
     jobs = [
         (variant, seed, args.generations, args.population)
@@ -271,7 +268,7 @@ def main() -> None:
                 "skip": variant.skip,
                 "decoupled": variant.decoupled,
                 "crossover": variant.crossover,
-                "parameters": parameter_count(variant, base, inputs),
+                "parameters": parameter_count(variant, inputs),
                 "training": training,
                 "race": racing,
             }

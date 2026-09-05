@@ -16,7 +16,7 @@ import multiprocessing.pool
 import os
 import random
 from dataclasses import dataclass, field
-from itertools import chain
+from functools import cached_property
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -26,7 +26,7 @@ import pygame
 from src import parallel
 from src.brains import BrainRef, Color, build_brain, color_of, entrants
 from src.car import Car, network_input_size
-from src.config import SimulationConfig, race_track
+from src.config import SimulationConfig, race_track, track_variants
 from src.dashboard import Dashboard, Entry
 from src.genetic import next_generation
 from src.renderer import Renderer
@@ -100,9 +100,6 @@ class Simulation:
             os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
         pygame.init()
 
-        # Several island layouts per circuit, cycled through generation by
-        # generation, so no single arrangement can be memorised.
-        self.circuits: List[List[Track]] = parallel.build_circuits(cfg)
         self.input_size = network_input_size(cfg.car)
         # One stream for the start points, drawn once per evaluation and shared.
         # Taking them from the same generator as the genomes tied the sequence
@@ -110,11 +107,16 @@ class Simulation:
         # size — so entrants of different sizes met different starts.
         self._start_rng = np.random.default_rng(cfg.seed)
         self._brain_rng = np.random.default_rng(0)  # see `_car`
-        self._owner: Dict[int, Squad] = {}
 
-        size = self.circuits[0][0].size
+        # Read from the configuration rather than from a built circuit, so a
+        # run that never draws — a headless race, an ablation job — never pays
+        # for the twelve tracks it is not going to use.
+        first = track_variants()[0]
+        size = (first.width, first.height)
         self.renderer = Renderer(size, cfg.dashboard_width, cfg.fps) if render else None
-        self.dashboard = Dashboard(cfg.dashboard_width, size[1])
+        self.dashboard = (
+            Dashboard(cfg.dashboard_width, size[1], self.input_size) if render else None
+        )
         grid = list(entries) if entries is not None else [BrainRef(n) for n in entrants()]
         self.squads: List[Squad] = [self._recruit(ref) for ref in grid]
         if not self.squads:
@@ -122,6 +124,17 @@ class Simulation:
         logger.info("Entrants: %s", ", ".join(s.name for s in self.squads))
 
     # -- setup ---------------------------------------------------------------
+
+    @cached_property
+    def circuits(self) -> List[List[Track]]:
+        """Every circuit in each of its island layouts, built on first use.
+
+        Several island layouts per circuit, cycled through generation by
+        generation, so no single arrangement can be memorised. Building the
+        twelve of them costs about a second, so it is deferred: racing on
+        `gauntlet` and most of the test suite never touch them.
+        """
+        return parallel.build_circuits(self.cfg)
 
     def _recruit(self, ref: BrainRef) -> Squad:
         """Draw an entrant's starting population from its own stream.
@@ -173,15 +186,12 @@ class Simulation:
         """
         return int(self.cfg.laps_budget * track.lap_length / self.cfg.car.max_speed)
 
-    def _stage(self, number: int, generation: int, track: Optional[Track] = None) -> Stage:
+    def _stage(self, number: int, generation: int) -> Stage:
         """Pick the circuit, the island layout and the start point — once."""
-        if track is None:
-            variants = self.circuits[number]
-            variant = generation % len(variants)
-            track = variants[variant]
-            start = track.valid_start_index(self._start_rng) if self.cfg.random_start else None
-        else:
-            variant, start = 0, None  # the race is one fixed test
+        variants = self.circuits[number]
+        variant = generation % len(variants)
+        track = variants[variant]
+        start = track.valid_start_index(self._start_rng) if self.cfg.random_start else None
         return Stage(track, number, variant, start, self.frame_budget(track))
 
     def _car(
@@ -194,44 +204,42 @@ class Simulation:
         # happened to be built. That is what made parallel runs diverge.
         driver = build_brain(squad.brain, self.input_size, self._brain_rng)
         driver.set_genome(genome)
-        car = Car(stage.track, driver, self.cfg.car, stage.start if start is None else start)
-        self._owner[id(car)] = squad
-        return car
+        return Car(stage.track, driver, self.cfg.car, stage.start if start is None else start)
 
-    def _drive(self, cars: Sequence[Car], stage: Stage, generation: int, waiting=None) -> bool:
+    def _drive(self, crew: Sequence[Tuple[Squad, Car]], stage: Stage, generation: int) -> bool:
         """Step the cars frame by frame, drawing them. False if the user quit.
 
-        When `waiting` is given these are only the cars on screen: the pool is
-        scoring the full populations meanwhile, so the cores do the work while
-        the window shows a readable subset. Those cars are simulated twice, here
-        and in a worker, which costs a few dozen cars' arithmetic and gives
-        identical results — every step is deterministic given the track, the
-        start and the genome.
+        Each car is carried with the squad that entered it, which is what the
+        panel needs to colour it and to group the standings. While the pool is
+        scoring the full populations, `crew` is only the cars on screen: those
+        are simulated twice, here and in a worker, which costs a few dozen cars'
+        arithmetic and gives identical results — every step is deterministic
+        given the track, the start and the genome.
         """
         for frame in range(stage.budget):
-            for car in cars:
+            for _, car in crew:
                 car.update()
             if self.renderer is not None:
                 if self.renderer.poll_quit():
                     return False
-                self._draw(cars, stage, generation, frame)
-            if not any(car.alive for car in cars):
-                break
-            if waiting is not None and self.renderer is None and waiting.ready():
+                self._draw(crew, stage, generation, frame)
+            if not any(car.alive for _, car in crew):
                 break
         return True
 
-    def _draw(self, cars: Sequence[Car], stage: Stage, generation: int, frame: int) -> None:
-        assert self.renderer is not None
+    def _draw(
+        self, crew: Sequence[Tuple[Squad, Car]], stage: Stage, generation: int, frame: int
+    ) -> None:
+        assert self.renderer is not None and self.dashboard is not None
         self.renderer.draw_track(
             stage.track,
-            cars,
-            [self._owner[id(c)].color for c in cars],
+            [car for _, car in crew],
+            [squad.color for squad, _ in crew],
             start_index=stage.start or 0,
         )
         entries = []
         for squad in self.squads:
-            mine = [c for c in cars if self._owner[id(c)] is squad]
+            mine = [car for owner, car in crew if owner is squad]
             # The panel draws this squad's leader, so the diagram is of a brain
             # actually on the track rather than of last generation's champion.
             leader = max((c for c in mine if c.alive), key=lambda c: c.fitness, default=None)
@@ -252,7 +260,7 @@ class Simulation:
                 generation=generation,
                 track_name=stage.track.cfg.name,
                 track_number=stage.number + 1,
-                track_count=len(self.circuits),
+                track_count=len(track_variants()),
                 frame=frame,
                 max_frames=stage.budget,
                 entries=entries,
@@ -270,11 +278,14 @@ class Simulation:
                 i: [self._car(stage, s, g) for g in s.genomes]
                 for i, s in enumerate(self.squads)
             }
-            keep = self._drive(list(chain.from_iterable(cars.values())), stage, generation)
+            crew = [(self.squads[i], car) for i, mine in cars.items() for car in mine]
+            keep = self._drive(crew, stage, generation)
             return {i: [c.fitness / lap for c in cs] for i, cs in cars.items()}, keep
 
         jobs = [
-            ((i, b), stage.number, stage.variant, stage.start, block, squad.brain)
+            parallel.Job(
+                (i, b), stage.number, stage.variant, stage.start, stage.budget, block, squad.brain
+            )
             for i, squad in enumerate(self.squads)
             for b, block in enumerate(parallel.split(squad.genomes, self.workers))
         ]
@@ -282,16 +293,17 @@ class Simulation:
         keep = True
         if self.renderer is not None:
             shown = [
-                self._car(stage, squad, genome)
+                (squad, self._car(stage, squad, genome))
                 for squad in self.squads
                 for genome in squad.genomes[: self.shown]
             ]
-            keep = self._drive(shown, stage, generation, waiting=pending)
+            keep = self._drive(shown, stage, generation)
 
-        by_key = dict(pending.get())
+        # `map_async` hands the results back in job order, which is squad by
+        # squad and block by block — the order the populations were cut in.
         scores: Dict[int, List[float]] = {i: [] for i in range(len(self.squads))}
-        for key, *_ in jobs:
-            scores[key[0]].extend(by_key[key])
+        for (squad_index, _), values in pending.get():
+            scores[squad_index].extend(values)
         return scores, keep
 
     # -- training ------------------------------------------------------------
@@ -399,30 +411,32 @@ class Simulation:
         The circuit is `gauntlet` unless told otherwise: nobody trained on it, so
         finishing it shows general driving rather than a memorised layout.
         """
-        stage = self._stage(0, 0, track or Track(race_track()))
+        circuit = track or Track(race_track())
+        # The race is one fixed test: no island rotation, no random start.
+        stage = Stage(circuit, 0, 0, None, self.frame_budget(circuit))
         # Cars do not collide with one another — the physics never modelled it —
         # so they are spaced along the centreline only to stay visible. Distance
         # is measured from each car's own start, so the stagger costs nobody
         # progress; it does mean they meet each corner a few frames apart.
         spacing = int(26.0 / stage.track.cfg.sample_spacing)
-        cars: List[Car] = []
-        for position, squad in enumerate(self.squads):
+        crew: List[Tuple[Squad, Car]] = []
+        for squad in self.squads:
             genome = self.load_champion(squad)
             if genome is None:
                 logger.warning("%s has no champion yet and sits this one out", squad.name)
                 continue
-            start = (-len(cars) * spacing) % len(stage.track.samples)
-            cars.append(self._car(stage, squad, genome, start=start))
-        if not cars:
+            start = (-len(crew) * spacing) % len(stage.track.samples)
+            crew.append((squad, self._car(stage, squad, genome, start=start)))
+        if not crew:
             raise SystemExit("No champions in outputs/ — run train.py first.")
 
         logger.info(
             "Race on '%s', never trained on: %s",
             stage.track.cfg.name,
-            ", ".join(self._owner[id(c)].name for c in cars),
+            ", ".join(squad.name for squad, _ in crew),
         )
-        self._drive(cars, stage, self.cfg.generations)
-        results = [(self._owner[id(c)].name, c.laps, c.alive, c.frames) for c in cars]
+        self._drive(crew, stage, self.cfg.generations)
+        results = [(squad.name, c.laps, c.alive, c.frames) for squad, c in crew]
         results.sort(key=lambda r: r[1], reverse=True)
         pygame.quit()
         return results

@@ -12,7 +12,7 @@ therefore reproduce serial ones exactly, which the tests check.
 """
 
 import os
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Dict, Hashable, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -26,10 +26,27 @@ from src.track import Track
 # once and keeps them for the life of the pool.
 _STATE: Dict[str, object] = {}
 
-# The chunk id is only handed back untouched, so it can be whatever the caller
-# needs to reassemble its results — an int for one population, (squad, block)
-# when several are scored in the same pass.
-Job = Tuple[Hashable, int, Optional[int], int, List[np.ndarray], BrainRef]
+
+@dataclass(frozen=True)
+class Job:
+    """One block of genomes, and the conditions to score it under.
+
+    The conditions are the parent's `Stage`, budget included, rather than
+    anything a worker re-derives: the drawn cars and the pooled cars have to be
+    driven over the same horizon for their scores to mean the same thing.
+
+    `chunk_id` is handed back untouched, so it can be whatever the caller needs
+    to reassemble its results — (squad, block) when several populations are
+    scored in the same pass.
+    """
+
+    chunk_id: Hashable
+    track_number: int
+    variant: int
+    start_index: Optional[int]
+    budget: int
+    genomes: List[np.ndarray]
+    brain: BrainRef
 
 
 def build_circuits(cfg: SimulationConfig) -> List[List[Track]]:
@@ -67,27 +84,25 @@ def worker_init(cfg: SimulationConfig) -> None:
 
 def evaluate(job: Job) -> Tuple[Hashable, List[float]]:
     """Drive one block of genomes on one circuit; return their lap scores."""
-    chunk_id, track_number, variant, start_index, genomes, brain = job
     cfg: SimulationConfig = _STATE["cfg"]  # type: ignore[assignment]
     circuits: Sequence[Sequence[Track]] = _STATE["circuits"]  # type: ignore[assignment]
     rng: np.random.Generator = _STATE["rng"]  # type: ignore[assignment]
     inputs: int = _STATE["inputs"]  # type: ignore[assignment]
 
-    track = circuits[track_number][variant]
-    budget = int(cfg.laps_budget * track.lap_length / cfg.car.max_speed)
+    track = circuits[job.track_number][job.variant]
 
     cars = []
-    for genome in genomes:
-        driver = build_brain(brain, inputs, rng)
+    for genome in job.genomes:
+        driver = build_brain(job.brain, inputs, rng)
         driver.set_genome(genome)
-        cars.append(Car(track, driver, cfg.car, start_index))
+        cars.append(Car(track, driver, cfg.car, job.start_index))
 
-    for _ in range(budget):
+    for _ in range(job.budget):
         for car in cars:
             car.update()
         if not any(car.alive for car in cars):
             break
-    return chunk_id, [car.fitness / track.lap_length for car in cars]
+    return job.chunk_id, [car.fitness / track.lap_length for car in cars]
 
 
 BLOCKS_PER_WORKER = 3

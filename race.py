@@ -33,7 +33,7 @@ def main() -> None:
     setup_logging()
     args = parse_args()
     simulation = Simulation(build_config(args), render=not args.headless)
-    track = simulation.circuits[args.track][0] if args.track is not None else None
+    track = simulation.tracks[args.track] if args.track is not None else None
     results = simulation.race(track)
     logger.info("Classification:\n%s", format_results(results))
 

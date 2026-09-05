@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 
 Point = Tuple[float, float]
 
+# Samples either side of the hint searched by `nearest_index`. Held as a module
+# constant so the window is allocated once rather than on every call.
+_SEARCH_WINDOW = 25
+_OFFSETS = np.arange(-_SEARCH_WINDOW, _SEARCH_WINDOW + 1)
+
 
 def _chaikin(points: Sequence[Point], passes: int) -> List[Point]:
     """Round off a closed polyline by cutting every corner, `passes` times."""
@@ -60,11 +65,8 @@ class Track:
         self.size: Tuple[int, int] = (cfg.width, cfg.height)
         smoothed = _chaikin(self._skeleton(), cfg.smoothing_passes)
         self.samples: np.ndarray = np.array(_resample(smoothed, cfg.sample_spacing))
-        self._segment_lengths = np.linalg.norm(
-            np.roll(self.samples, -1, axis=0) - self.samples, axis=1
-        )
-        self.arclength: np.ndarray = np.concatenate([[0.0], np.cumsum(self._segment_lengths[:-1])])
-        self.lap_length: float = float(self._segment_lengths.sum())
+        segments = np.linalg.norm(np.roll(self.samples, -1, axis=0) - self.samples, axis=1)
+        self.lap_length: float = float(segments.sum())
         self.surface = self._render_surface()
         self.mask = self._build_mask(self.surface)
         self.clearance = self._build_clearance()
@@ -318,19 +320,22 @@ class Track:
         tx, ty = self.tangent_at_index(index)
         return -ty, tx
 
-    def nearest_index(self, x: float, y: float, hint: int = -1, window: int = 25) -> int:
+    def nearest_index(self, x: float, y: float, hint: int = -1) -> int:
         """Index of the closest centreline sample.
 
         With a `hint` from the previous frame only a local window is searched,
-        which keeps this O(window) instead of O(number of samples).
+        which keeps this O(window) instead of O(number of samples). This runs
+        once per car per frame, so the window is a preallocated constant and the
+        squared distance is taken on the columns rather than through `einsum`.
         """
-        n = len(self.samples)
         if hint < 0:
             deltas = self.samples - np.array([x, y])
             return int(np.argmin(np.einsum("ij,ij->i", deltas, deltas)))
-        candidates = (np.arange(hint - window, hint + window + 1)) % n
-        deltas = self.samples[candidates] - np.array([x, y])
-        return int(candidates[np.argmin(np.einsum("ij,ij->i", deltas, deltas))])
+        candidates = (hint + _OFFSETS) % len(self.samples)
+        points = self.samples[candidates]
+        dx = points[:, 0] - x
+        dy = points[:, 1] - y
+        return int(candidates[np.argmin(dx * dx + dy * dy)])
 
     def road_extent_at_index(self, index: int) -> Tuple[float, float]:
         """Measured distance to each road edge along the local normal."""

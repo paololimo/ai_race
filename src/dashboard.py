@@ -65,9 +65,12 @@ def response(brain: Brain, input_size: int) -> np.ndarray:
 class Dashboard:
     """Renders the right-hand panel onto its own surface."""
 
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(self, width: int, height: int, input_size: int) -> None:
         self.width = width
         self.height = height
+        # What the cars actually feed their brains, so the fallback diagram
+        # keeps probing the right number of inputs if the sensor layout changes.
+        self.input_size = input_size
         self.surface = pygame.Surface((width, height))
         self.font_big = pygame.font.SysFont("menlo,monospace", 26, bold=True)
         self.font = pygame.font.SysFont("menlo,monospace", 14)
@@ -160,7 +163,7 @@ class Dashboard:
     def _response_diagram(self, brain: Brain, size: Tuple[int, int]) -> pygame.Surface:
         """The fallback for a brain that does not describe itself.
 
-        Eight sensors on the left, steering and throttle on the right, an edge
+        The sensor rays on the left, steering and throttle on the right, an edge
         green where raising that input raises that output and red where it
         lowers it. Measured, not read off the weights, so it works for any
         architecture — including one whose weights mean nothing on their own.
@@ -168,11 +171,11 @@ class Dashboard:
         surface = pygame.Surface(size)
         surface.fill(_CARD)
         width, height = size
-        jacobian = response(brain, 8)
+        jacobian = response(brain, self.input_size)
         scale = max(1e-6, float(np.abs(jacobian).max()))
 
         left, right = 14, width - 22
-        rays, gap = 7, 6
+        rays, gap = self.input_size - 1, 6  # every input but the last is a ray
         ray_ys = [gap + (height - 2 * gap - 14) * i / (rays - 1) for i in range(rays)]
         speed_y = height - gap - 4
         input_ys = ray_ys + [speed_y]

@@ -123,7 +123,7 @@ class Car:
         else:
             self.speed += self.cfg.braking * throttle  # negative throttle brakes
         self.speed -= self.cfg.friction
-        self.speed = float(np.clip(self.speed, 0.0, self.cfg.max_speed))
+        self.speed = min(max(self.speed, 0.0), self.cfg.max_speed)
         # Steering authority grows with speed up to a low reference speed, then
         # saturates. Past that point the turning radius is speed / turn rate, so
         # slowing down is what buys a tighter corner.

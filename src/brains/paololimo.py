@@ -130,15 +130,9 @@ class NeuralNetwork:
     def layer_sizes(self) -> Tuple[int, ...]:
         return self.stacks[0].sizes
 
-    @property
-    def weights(self) -> List[np.ndarray]:
-        return [w for stack in self.stacks for w in stack.weights]
-
-    @property
-    def biases(self) -> List[np.ndarray]:
-        return [b for stack in self.stacks for b in stack.biases]
-
     def _pass(self, inputs: np.ndarray) -> np.ndarray:
+        if len(self.stacks) == 1:  # the coupled case: nothing to join
+            return self.stacks[0].forward(inputs)
         return np.concatenate([stack.forward(inputs) for stack in self.stacks])
 
     def forward(self, inputs: np.ndarray) -> np.ndarray:

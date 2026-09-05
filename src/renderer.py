@@ -1,15 +1,13 @@
 """Pygame window: the circuit on the left, the dashboard panel on the right."""
 
 import math
-from typing import Optional, Sequence, Tuple
+from typing import Sequence, Tuple
 
 import pygame
 
 from src.car import Car
 from src.track import Track
 
-_CAR_COLOR = (196, 74, 74)
-_BEST_COLOR = (255, 176, 60)
 _SENSOR_COLOR = (90, 200, 250)
 
 
@@ -48,14 +46,14 @@ class Renderer:
         self,
         track: Track,
         cars: Sequence[Car],
-        colors: Optional[Sequence[Tuple[int, int, int]]] = None,
+        colors: Sequence[Tuple[int, int, int]],
         start_index: int = 0,
-    ) -> Optional[Car]:
-        """Draw the circuit and the cars; return the current leader.
+    ) -> None:
+        """Draw the circuit and the cars, one colour per car.
 
-        `colors` gives one colour per car, for a race where each entrant must
-        stay recognisable; without it every car is the same red and only the
-        leader stands out, which is what a single evolving population wants.
+        Every car on screen belongs to an entrant that must stay recognisable,
+        so the colour is always the entrant's; the leader is picked out by its
+        sensor rays rather than by a colour of its own.
 
         The start line is drawn here rather than baked into the circuit, so it
         marks where this generation actually began. A fixed line was worse than
@@ -64,17 +62,13 @@ class Renderer:
         self.screen.blit(track.surface, (0, 0))
         head, tail = track.start_line(start_index)
         pygame.draw.line(self.screen, track.cfg.line_color, head, tail, 3)
-        palette = {id(c): colors[i] for i, c in enumerate(cars)} if colors else {}
-        alive = [c for c in cars if c.alive]
-        leader = max(alive, key=lambda c: c.fitness, default=None)
-        for car in alive:
-            if car is not leader or palette:
-                self._draw_car(car, palette.get(id(car), _CAR_COLOR))
+        alive = [(car, color) for car, color in zip(cars, colors) if car.alive]
+        for car, color in alive:
+            self._draw_car(car, color)
+        leader = max((car for car, _ in alive), key=lambda c: c.fitness, default=None)
         if leader is not None:
             for endpoint in leader.sensor_endpoints:
                 pygame.draw.line(self.screen, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
-            self._draw_car(leader, palette.get(id(leader), _BEST_COLOR))
-        return leader
 
     def present(self, panel: pygame.Surface) -> None:
         """Blit the dashboard panel and flip the frame."""

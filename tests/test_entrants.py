@@ -244,7 +244,7 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
         entries.append(Entry(name, color_of(name), 0.5, 1, 8, 1.0, brain))
 
     assert described + measured == len(entrants())
-    panel = Dashboard(380, 700).render(
+    panel = Dashboard(380, 700, INPUTS).render(
         generation=1, track_name="serpentine", track_number=1, track_count=3,
         frame=1, max_frames=100, entries=entries, curves=[(e.name, e.color, [0.1, 0.2]) for e in entries],
     )
