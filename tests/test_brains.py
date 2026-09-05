@@ -4,12 +4,15 @@ A brain arriving from another agent is untrusted code held to a fixed
 interface, so these test the interface, not the getters.
 """
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 from src.brains import Brain, BrainRef, build_brain, register_brain
 from src.brains.baseline import config_from_spec, spec_from_config
-from src.config import NetworkConfig
+from src.config import NetworkConfig, SimulationConfig
+from src.simulation import Simulation
 
 INPUTS = 8
 
@@ -57,3 +60,51 @@ def test_spec_round_trips_through_a_network_config() -> None:
     """The spec is what the checkpoint will carry, so it must lose nothing."""
     cfg = NetworkConfig(hidden_sizes=(9, 7), symmetric=True, weight_init_scale=0.5)
     assert config_from_spec(spec_from_config(cfg)) == cfg
+
+
+def test_checkpoint_preserves_symmetry(tmp_path) -> None:
+    """Saving only the layer sizes raced a model that was never trained.
+
+    `symmetric` changes what the same weights compute — the network is averaged
+    against its own mirror image — so a checkpoint that drops it loads a
+    different driver than the one evolution selected.
+    """
+    cfg = SimulationConfig()
+    symmetric = replace(cfg.network, symmetric=True)
+    trainer = Simulation(replace(cfg, network=symmetric, checkpoint_dir=str(tmp_path)), render=False)
+    trainer.best_genome = build_brain(
+        trainer.brain_ref(), trainer.input_size, np.random.default_rng(0)
+    ).get_genome()
+    trainer.best_fitness = 1.0
+    path = trainer.save_best()
+
+    # The loader's own default is symmetric=False: only the manifest can save it.
+    loader = Simulation(replace(cfg, checkpoint_dir=str(tmp_path)), render=False)
+    _, ref = loader._load_genome(path)
+    assert ref.spec["symmetric"] is True
+
+    sensors = np.linspace(0.1, 0.9, trainer.input_size)
+    trained = build_brain(trainer.brain_ref(), trainer.input_size, np.random.default_rng(0))
+    trained.set_genome(trainer.best_genome)
+    raced = build_brain(ref, loader.input_size, np.random.default_rng(0))
+    raced.set_genome(trainer.best_genome)
+    assert np.allclose(trained.forward(sensors), raced.forward(sensors))
+
+
+def test_checkpoint_carries_the_brain_name(tmp_path) -> None:
+    """A competitor's model must not be reloaded as the baseline."""
+    cfg = replace(
+        SimulationConfig(),
+        brain=BrainRef("test-stub", {"gain": 3.0}),
+        entrant="stub",
+        checkpoint_dir=str(tmp_path),
+    )
+    trainer = Simulation(cfg, render=False)
+    trainer.best_genome = build_brain(
+        cfg.brain, trainer.input_size, np.random.default_rng(0)
+    ).get_genome()
+    trainer.best_fitness = 0.5
+    path = trainer.save_best("stub_genome.npz")
+
+    _, ref = Simulation(cfg, render=False)._load_genome(path)
+    assert ref == BrainRef("test-stub", {"gain": 3.0})

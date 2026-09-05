@@ -1,9 +1,12 @@
 """Train a population on the three training circuits.
 
-The best genome of the run is written to `outputs/best_genome.npz`, which is
-what `race.py` then takes to the circuit it has never seen. `--brain` selects
-which registered architecture to evolve; everything else the comparison rests
-on is fixed here.
+The champion is written to `outputs/best_genome.npz` and to a second file named
+after the entrant, which is what `race.py` takes to the circuit it has never
+seen. Every entrant must be trained on the same seed, generations and
+population for the race to mean anything:
+
+    python train.py --brain baseline --entrant human  --seed 42 --generations 120 --headless
+    python train.py --brain codex    --entrant codex  --seed 42 --generations 120 --headless
 """
 
 import argparse
@@ -31,10 +34,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     setup_logging()
     args = parse_args()
-    simulation = Simulation(
-        build_config(args), render=not args.headless, workers=args.workers
-    )
+    cfg = build_config(args)
+    simulation = Simulation(cfg, render=not args.headless, workers=args.workers)
     simulation.train()
+    # One file per entrant, so several brains can be trained side by side
+    # without overwriting each other's champion.
+    simulation.save_best(args.out.name if args.out else f"{cfg.entrant}_genome.npz")
 
 
 if __name__ == "__main__":

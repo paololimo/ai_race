@@ -39,6 +39,12 @@ def add_brain_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help='JSON hyperparameters for the brain, e.g. \'{"hidden_sizes": [20, 20]}\'',
     )
+    parser.add_argument(
+        "--entrant",
+        default=None,
+        help="name this entry is saved under (default: the brain's name)",
+    )
+    parser.add_argument("--out", type=Path, default=None, help="where to write the champion")
 
 
 def build_config(args: argparse.Namespace) -> SimulationConfig:
@@ -59,6 +65,7 @@ def build_config(args: argparse.Namespace) -> SimulationConfig:
         seed=args.seed,
         generations=getattr(args, "generations", base.generations),
         brain=BrainRef(brain_name, spec),
+        entrant=getattr(args, "entrant", None) or brain_name,
         genetic=replace(
             base.genetic,
             population_size=getattr(args, "population", base.genetic.population_size),

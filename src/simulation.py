@@ -1,5 +1,6 @@
 """Training loop: evaluate every genome on each training circuit, then evolve."""
 
+import json
 import logging
 import multiprocessing
 import multiprocessing.pool
@@ -274,32 +275,44 @@ class Simulation:
         self.close()
         pygame.quit()
 
-    def save_best(self) -> Optional[Path]:
+    def save_best(self, name: str = "best_genome.npz") -> Optional[Path]:
         if self.best_genome is None:
             return None
         out_dir = Path(self.cfg.checkpoint_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        path = out_dir / "best_genome.npz"
+        path = out_dir / name
+        ref = self.brain_ref()
         np.savez(
             path,
             genome=self.best_genome,
             fitness=self.best_fitness,
             input_size=self.input_size,
-            hidden_sizes=np.array(self.cfg.network.hidden_sizes),
+            # The brain's own name and hyperparameters, so the checkpoint can be
+            # rebuilt exactly. Saving only `hidden_sizes` silently dropped every
+            # other choice — `symmetric` above all, which changes what the same
+            # weights compute — and raced a model that was never trained.
+            brain=ref.name,
+            spec=json.dumps(dict(ref.spec)),
+            entrant=self.cfg.entrant,
+            seed=self.cfg.seed,
+            generations=self.cfg.generations,
+            population=self.cfg.genetic.population_size,
+            hidden_sizes=np.array(self.cfg.network.hidden_sizes),  # legacy readers
             history=np.array(self.history),
         )
         logger.info("Saved best genome (fitness %.1f) to %s", self.best_fitness, path)
         return path
 
     def _load_genome(self, genome_path: Path) -> Tuple[np.ndarray, BrainRef]:
-        """Load a saved model, rebuilding the architecture it was trained with.
+        """Load a saved model, rebuilding the brain it was trained with.
 
-        The checkpoint carries its own layer sizes, so a model stays usable
-        after the project's default architecture changes. Only the input count
-        must still match: that one is fixed by the car's sensors, not by the
-        network, so a mismatch means the car itself has changed.
+        The checkpoint names its own brain and carries that brain's full spec,
+        so a model stays usable after the project's defaults change and a
+        competitor's model can be raced without guessing its architecture. Only
+        the input count must still match: that one is fixed by the car's
+        sensors, not by the brain, so a mismatch means the car itself changed.
         """
-        data = np.load(genome_path)
+        data = np.load(genome_path, allow_pickle=False)
         saved_inputs = int(data["input_size"]) if "input_size" in data else -1
         if saved_inputs != self.input_size:
             raise SystemExit(
@@ -307,12 +320,14 @@ class Simulation:
                 f"produces {self.input_size}. The sensor layout changed since it was "
                 f"trained — retrain with train.py."
             )
-        hidden = tuple(int(n) for n in data["hidden_sizes"]) if "hidden_sizes" in data else None
-        network = replace(self.cfg.network, hidden_sizes=hidden) if hidden else self.cfg.network
-        if hidden and hidden != self.cfg.network.hidden_sizes:
-            logger.info("Model architecture %s differs from the current default %s — using the model's.",
-                        hidden, self.cfg.network.hidden_sizes)
-        return data["genome"], BrainRef("baseline", spec_from_config(network))
+        if "brain" in data:
+            ref = BrainRef(str(data["brain"]), json.loads(str(data["spec"])))
+        else:
+            # Written before brains were named: baseline, layer sizes only.
+            hidden = tuple(int(n) for n in data["hidden_sizes"])
+            ref = BrainRef("baseline", spec_from_config(replace(self.cfg.network, hidden_sizes=hidden)))
+            logger.warning("%s predates the brain manifest — assuming baseline %s", genome_path.name, hidden)
+        return data["genome"], ref
 
     def replay_best(self, genome_path: Path, track_number: int = 0) -> None:
         """Watch a saved genome drive one training circuit on its own."""

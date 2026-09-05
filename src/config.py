@@ -229,6 +229,7 @@ class SimulationConfig:
     # algorithm and seed are fixed here, so a race compares architectures and
     # nothing else. An empty spec on the baseline means "use `network` below".
     brain: BrainRef = field(default_factory=BrainRef)
+    entrant: str = "human"  # label the checkpoint is written under
     track: TrackConfig = field(default_factory=TrackConfig)
     obstacles: ObstacleConfig = field(default_factory=ObstacleConfig)
     car: CarConfig = field(default_factory=CarConfig)
