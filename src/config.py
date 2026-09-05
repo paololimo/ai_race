@@ -3,8 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Tuple
 
-from src.brains import BrainRef
-
 
 # One asphalt tone across every circuit: only the surroundings change colour.
 _ASPHALT = (44, 44, 52)
@@ -171,20 +169,6 @@ class CarConfig:
 
 
 @dataclass(frozen=True)
-class NetworkConfig:
-    """Feedforward architecture: 8 inputs -> 14 -> 14 -> 2 controls.
-
-    Inputs are the 7 ray distances and own speed.
-    """
-
-    hidden_sizes: Tuple[int, ...] = (14, 14)
-    output_size: int = 2
-    weight_init_scale: float = 1.0
-    # Impose left/right symmetry instead of letting the weights discover it.
-    symmetric: bool = False
-
-
-@dataclass(frozen=True)
 class GeneticConfig:
     """Selection, crossover and mutation parameters."""
 
@@ -224,14 +208,10 @@ class SimulationConfig:
     obstacle_start_generation: int = 30
     dashboard_width: int = 380
     checkpoint_dir: str = "outputs"
-    # Which brain drives, and who built it. The brain is the *only* thing a
-    # competing agent supplies: circuits, physics, sensors, fitness, genetic
-    # algorithm and seed are fixed here, so a race compares architectures and
-    # nothing else. An empty spec on the baseline means "use `network` below".
-    brain: BrainRef = field(default_factory=BrainRef)
-    entrant: str = "human"  # label the checkpoint is written under
+    # Everything a comparison rests on lives here and is shared by every
+    # entrant. What an entrant brings is only its architecture, in one file
+    # under `src/brains/`.
     track: TrackConfig = field(default_factory=TrackConfig)
     obstacles: ObstacleConfig = field(default_factory=ObstacleConfig)
     car: CarConfig = field(default_factory=CarConfig)
-    network: NetworkConfig = field(default_factory=NetworkConfig)
     genetic: GeneticConfig = field(default_factory=GeneticConfig)

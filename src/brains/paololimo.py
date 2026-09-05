@@ -1,20 +1,58 @@
-"""Feedforward neural network written from scratch (no ML libraries)."""
+"""Paolo's entrant: a feedforward network written from scratch, no ML libraries.
 
-from typing import List, Tuple
+Dense `8 -> 14 -> 14 -> 2` with tanh on every layer, 366 parameters. The weights
+are never trained by gradient descent: they are a flat genome that the harness's
+genetic algorithm recombines.
+"""
+
+from dataclasses import dataclass
+from typing import Any, List, Mapping, Tuple
 
 import numpy as np
 
-from src.config import NetworkConfig
+from src.brains import register_brain
 
 
+@dataclass(frozen=True)
+class NetworkConfig:
+    """Architecture of this entrant. Overridable through the checkpoint spec."""
+
+    hidden_sizes: Tuple[int, ...] = (14, 14)
+    output_size: int = 2
+    weight_init_scale: float = 1.0
+    # Impose left/right symmetry instead of letting the weights discover it.
+    symmetric: bool = False
+
+
+def spec_from_config(cfg: NetworkConfig) -> dict:
+    """Serialisable description of a `NetworkConfig`, for the checkpoint."""
+    return {
+        "hidden_sizes": list(cfg.hidden_sizes),
+        "output_size": cfg.output_size,
+        "weight_init_scale": cfg.weight_init_scale,
+        "symmetric": cfg.symmetric,
+    }
+
+
+def config_from_spec(spec: Mapping[str, Any]) -> NetworkConfig:
+    """Rebuild a `NetworkConfig` from a spec, falling back to the defaults."""
+    base = NetworkConfig()
+    return NetworkConfig(
+        hidden_sizes=tuple(int(n) for n in spec.get("hidden_sizes", base.hidden_sizes)),
+        output_size=int(spec.get("output_size", base.output_size)),
+        weight_init_scale=float(spec.get("weight_init_scale", base.weight_init_scale)),
+        symmetric=bool(spec.get("symmetric", base.symmetric)),
+    )
+
+
+@register_brain("paololimo")
 class NeuralNetwork:
-    """Dense feedforward network with tanh activations.
+    """Dense feedforward network with tanh activations."""
 
-    Weights are never trained by gradient descent: they are treated as a genome
-    that the genetic algorithm recombines and mutates.
-    """
-
-    def __init__(self, input_size: int, cfg: NetworkConfig, rng: np.random.Generator) -> None:
+    def __init__(
+        self, input_size: int, spec: Mapping[str, Any], rng: np.random.Generator
+    ) -> None:
+        cfg = config_from_spec(spec)
         self.layer_sizes: Tuple[int, ...] = (input_size, *cfg.hidden_sizes, cfg.output_size)
         self.symmetric = cfg.symmetric
         # Every input but the last is a sensor ray; the last one is own speed,
@@ -64,7 +102,7 @@ class NeuralNetwork:
     def set_genome(self, genome: np.ndarray) -> None:
         """Load a flat vector produced by `get_genome` back into the network."""
         if genome.size != self.genome_size:
-            raise ValueError(f"Genome size {genome.size} does not match network {self.genome_size}")
+            raise ValueError(f"Genome size {genome.size} does not match {self.genome_size}")
         offset = 0
         for i, weight in enumerate(self.weights):
             self.weights[i] = genome[offset : offset + weight.size].reshape(weight.shape)
@@ -72,3 +110,6 @@ class NeuralNetwork:
         for i, bias in enumerate(self.biases):
             self.biases[i] = genome[offset : offset + bias.size].reshape(bias.shape)
             offset += bias.size
+
+
+__all__ = ["NetworkConfig", "NeuralNetwork", "config_from_spec", "spec_from_config"]

@@ -13,7 +13,7 @@ therefore reproduce serial ones exactly, which the tests check.
 
 import os
 from dataclasses import replace
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Hashable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -26,7 +26,10 @@ from src.track import Track
 # once and keeps them for the life of the pool.
 _STATE: Dict[str, object] = {}
 
-Job = Tuple[int, int, Optional[int], int, List[np.ndarray], BrainRef]
+# The chunk id is only handed back untouched, so it can be whatever the caller
+# needs to reassemble its results — an int for one population, (squad, block)
+# when several are scored in the same pass.
+Job = Tuple[Hashable, int, Optional[int], int, List[np.ndarray], BrainRef]
 
 
 def build_circuits(cfg: SimulationConfig) -> List[List[Track]]:
@@ -62,7 +65,7 @@ def worker_init(cfg: SimulationConfig) -> None:
     _STATE["inputs"] = network_input_size(cfg.car)
 
 
-def evaluate(job: Job) -> Tuple[int, List[float]]:
+def evaluate(job: Job) -> Tuple[Hashable, List[float]]:
     """Drive one block of genomes on one circuit; return their lap scores."""
     chunk_id, track_number, variant, start_index, genomes, brain = job
     cfg: SimulationConfig = _STATE["cfg"]  # type: ignore[assignment]

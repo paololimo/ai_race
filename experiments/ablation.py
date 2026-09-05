@@ -23,6 +23,7 @@ import multiprocessing
 import os
 import statistics
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -32,12 +33,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.brains import BrainRef  # noqa: E402
-from src.brains.baseline import spec_from_config  # noqa: E402
-from src.config import NetworkConfig, SimulationConfig, race_track  # noqa: E402
-from src.neural_network import NeuralNetwork  # noqa: E402
+from src.brains import BrainRef, build_brain  # noqa: E402
+from src.brains.paololimo import NetworkConfig, spec_from_config  # noqa: E402
+from src.config import SimulationConfig  # noqa: E402
 from src.simulation import Simulation  # noqa: E402
-from src.track import Track  # noqa: E402
 
 logger = logging.getLogger("ablation")
 
@@ -48,8 +47,10 @@ class Variant:
     hidden: Tuple[int, ...]
     symmetric: bool = False
 
-    def network(self, base: NetworkConfig) -> NetworkConfig:
-        return replace(base, hidden_sizes=self.hidden, symmetric=self.symmetric)
+    def ref(self) -> BrainRef:
+        """This variant as an entrant the harness can put on the grid."""
+        cfg = NetworkConfig(hidden_sizes=self.hidden, symmetric=self.symmetric)
+        return BrainRef("paololimo", spec_from_config(cfg))
 
 
 VARIANTS: Tuple[Variant, ...] = (
@@ -63,16 +64,7 @@ VARIANTS: Tuple[Variant, ...] = (
 
 
 def parameter_count(variant: Variant, cfg: SimulationConfig, inputs: int) -> int:
-    net = NeuralNetwork(inputs, variant.network(cfg.network), np.random.default_rng(0))
-    return net.genome_size
-
-
-def race_score(simulation: Simulation, genome: np.ndarray, network: NetworkConfig) -> float:
-    """Laps on the circuit the genome never trained on."""
-    simulation.tracks = [Track(race_track())]
-    ref = BrainRef("baseline", spec_from_config(network))
-    scores, _ = simulation.run_on_track([genome], 0, simulation.cfg.generations, ref)
-    return scores[0]
+    return build_brain(variant.ref(), inputs, np.random.default_rng(0)).genome_size
 
 
 def run_job(job: Tuple[Variant, int, int, int]) -> Tuple[str, int, float, float]:
@@ -84,20 +76,29 @@ def run_job(job: Tuple[Variant, int, int, int]) -> Tuple[str, int, float, float]
 
 
 def run_one(variant: Variant, seed: int, generations: int, population: int) -> Tuple[float, float]:
-    """Train one variant on one seed; return (training fitness, race laps)."""
+    """Train one variant on one seed; return (training fitness, race laps).
+
+    Only this variant is on the grid: the point is to compare configurations of
+    one entrant against each other, not against the other competitors.
+    """
     base = SimulationConfig()
-    cfg = replace(
-        base,
-        seed=seed,
-        generations=generations,
-        network=variant.network(base.network),
-        genetic=replace(base.genetic, population_size=population),
-    )
-    simulation = Simulation(cfg, render=False)
-    simulation.train()
-    if simulation.best_genome is None:
-        return 0.0, 0.0
-    return simulation.best_fitness, race_score(simulation, simulation.best_genome, cfg.network)
+    with tempfile.TemporaryDirectory() as out:
+        cfg = replace(
+            base,
+            seed=seed,
+            generations=generations,
+            checkpoint_dir=out,
+            genetic=replace(base.genetic, population_size=population),
+        )
+        simulation = Simulation(cfg, render=False, entries=[variant.ref()])
+        simulation.train()
+        squad = simulation.squads[0]
+        if squad.best_genome is None:
+            return 0.0, 0.0
+        # `race` reads the champion back from the checkpoint, so save it first.
+        simulation.save_all()
+        results = Simulation(cfg, render=False, entries=[variant.ref()]).race()
+        return squad.best_fitness, results[0][1]
 
 
 def main() -> None:

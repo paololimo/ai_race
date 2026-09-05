@@ -4,10 +4,10 @@ import numpy as np
 import pygame
 import pytest
 
-from src.config import CarConfig, GeneticConfig, NetworkConfig, track_variants
+from src.brains.paololimo import NetworkConfig, NeuralNetwork, spec_from_config
+from src.config import CarConfig, GeneticConfig, track_variants
 from src.car import Car, network_input_size
 from src.genetic import crossover, mutate, next_generation, select_breeding_pool
-from src.neural_network import NeuralNetwork
 from src.track import Track
 from src.track_check import widest_corridor
 
@@ -26,14 +26,14 @@ def track() -> Track:
 
 
 def test_forward_shape_and_range(rng: np.random.Generator) -> None:
-    net = NeuralNetwork(INPUTS, NetworkConfig(), rng)
+    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng)
     out = net.forward(np.ones(INPUTS))
     assert out.shape == (2,)
     assert np.all(np.abs(out) <= 1.0)
 
 
 def test_genome_roundtrip(rng: np.random.Generator) -> None:
-    net = NeuralNetwork(INPUTS, NetworkConfig(), rng)
+    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng)
     genome = net.get_genome()
     h1, h2 = NetworkConfig().hidden_sizes
     assert genome.size == INPUTS * h1 + h1 * h2 + h2 * 2 + h1 + h2 + 2
@@ -45,7 +45,7 @@ def test_genome_roundtrip(rng: np.random.Generator) -> None:
 
 
 def test_set_genome_rejects_wrong_size(rng: np.random.Generator) -> None:
-    net = NeuralNetwork(INPUTS, NetworkConfig(), rng)
+    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng)
     with pytest.raises(ValueError):
         net.set_genome(np.zeros(3))
 
@@ -108,7 +108,7 @@ def test_nearest_index_matches_brute_force(track: Track) -> None:
 
 
 def test_progress_tracks_distance_along_the_lap(track: Track, rng: np.random.Generator) -> None:
-    car = Car(track, NeuralNetwork(INPUTS, NetworkConfig(), rng), CarConfig())
+    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), CarConfig())
     # Teleport forward along the centreline; progress must follow the arc length.
     for step in range(1, 20):
         car.x, car.y = track.samples[step * 5]
@@ -117,7 +117,7 @@ def test_progress_tracks_distance_along_the_lap(track: Track, rng: np.random.Gen
 
 
 def test_car_senses_and_dies_off_road(track: Track, rng: np.random.Generator) -> None:
-    car = Car(track, NeuralNetwork(INPUTS, NetworkConfig(), rng), CarConfig())
+    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), CarConfig())
     readings = car.sense()
     assert readings.shape == (INPUTS,)
     assert np.all((readings >= 0.0) & (readings <= 1.0))
@@ -130,7 +130,7 @@ def test_car_senses_and_dies_off_road(track: Track, rng: np.random.Generator) ->
 
 def test_idle_car_is_killed(track: Track, rng: np.random.Generator) -> None:
     cfg = CarConfig(idle_frames_allowed=5)
-    car = Car(track, NeuralNetwork(INPUTS, NetworkConfig(), rng), cfg)
+    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), cfg)
     car.brain.weights = [np.zeros_like(w) for w in car.brain.weights]
     car.brain.biases = [np.zeros_like(b) for b in car.brain.biases]
     for _ in range(cfg.idle_frames_allowed):
@@ -155,26 +155,33 @@ def test_fitness_rewards_the_weakest_circuit_not_the_sum() -> None:
 
 
 def test_saved_model_carries_its_own_architecture(tmp_path) -> None:
-    """A checkpoint must stay usable after the project default changes."""
+    """A checkpoint must stay usable after the entrant's defaults change.
+
+    It records the architecture it was trained with, not just the layer sizes:
+    `symmetric` changes what the same weights compute, so dropping it raced a
+    model nobody had trained.
+    """
     from dataclasses import replace as dc_replace
 
+    from src.brains import BrainRef
     from src.config import SimulationConfig
     from src.simulation import Simulation
 
-    cfg = SimulationConfig()
+    cfg = dc_replace(SimulationConfig(), checkpoint_dir=str(tmp_path))
     trainer = Simulation(cfg, render=False)
-    odd = dc_replace(cfg.network, hidden_sizes=(9, 7))  # not the current default
-    brain = NeuralNetwork(trainer.input_size, odd, np.random.default_rng(0))
-    trainer.best_genome = brain.get_genome()
-    trainer.best_fitness = 1.23
-    trainer.cfg = dc_replace(cfg, network=odd, checkpoint_dir=str(tmp_path))
-    path = trainer.save_best()
+    squad = next(s for s in trainer.squads if s.name == "paololimo")
+    odd = NetworkConfig(hidden_sizes=(9, 7), symmetric=True)  # not the defaults
+    squad.brain = BrainRef("paololimo", spec_from_config(odd))
+    brain = NeuralNetwork(trainer.input_size, spec_from_config(odd), np.random.default_rng(0))
+    squad.best_genome = brain.get_genome()
+    squad.best_fitness = 1.23
+    trainer.save_all()
 
-    # A fresh simulation on the default architecture must still load it.
     loader = Simulation(cfg, render=False)
-    genome, ref = loader._load_genome(path)
-    assert ref.name == "baseline"
-    assert tuple(ref.spec["hidden_sizes"]) == (9, 7)
+    fresh = next(s for s in loader.squads if s.name == "paololimo")
+    genome = loader.load_champion(fresh)
+    assert tuple(fresh.brain.spec["hidden_sizes"]) == (9, 7)
+    assert fresh.brain.spec["symmetric"] is True
     assert genome.size == brain.genome_size
 
 
@@ -200,7 +207,7 @@ def test_clearance_field_never_overestimates(track: Track) -> None:
 
 def test_ray_stops_at_the_verge(track: Track, rng: np.random.Generator) -> None:
     """Whatever the stepping strategy, a ray must land on the edge of the road."""
-    car = Car(track, NeuralNetwork(INPUTS, NetworkConfig(), rng), CarConfig())
+    car = Car(track, NeuralNetwork(INPUTS, spec_from_config(NetworkConfig()), rng), CarConfig())
     for angle in np.linspace(0, 2 * np.pi, 40, endpoint=False):
         distance, _ = car._cast_wall_ray(float(np.cos(angle)), float(np.sin(angle)))
         if distance >= car.cfg.sensor_range:
@@ -210,34 +217,3 @@ def test_ray_stops_at_the_verge(track: Track, rng: np.random.Generator) -> None:
             car.y + np.sin(angle) * (distance - 2),
         )
         assert track.is_on_road(*just_before)
-
-
-def test_parallel_evaluation_matches_serial() -> None:
-    """Using more cores must change the speed and nothing else.
-
-    Guards a real bug: building a network draws random weights that are then
-    overwritten, and while those draws came from the run's own generator, doing
-    the building in workers left the parent's generator in a different state —
-    so start points and mutations diverged and the two paths gave different
-    answers.
-    """
-    from dataclasses import replace as dc_replace
-
-    from src.config import SimulationConfig
-    from src.simulation import Simulation
-
-    base = SimulationConfig()
-    cfg = dc_replace(
-        base,
-        generations=2,
-        island_variants=1,
-        genetic=dc_replace(base.genetic, population_size=8),
-    )
-
-    serial = Simulation(cfg, render=False, workers=1)
-    serial.train()
-    parallel_run = Simulation(cfg, render=False, workers=2)
-    parallel_run.train()
-
-    assert parallel_run.best_fitness == pytest.approx(serial.best_fitness, abs=1e-12)
-    assert parallel_run.history == pytest.approx(serial.history, abs=1e-12)

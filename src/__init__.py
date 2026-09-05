@@ -1,34 +1,32 @@
-"""Evolutionary self-driving car project."""
+"""Evolutionary self-driving cars: every entrant trains and races together."""
 
-from src.brains import Brain, BrainFactory, BrainRef, build_brain, register_brain
+from src.brains import Brain, BrainRef, build_brain, color_of, entrants, register_brain
 from src.car import Car
 from src.config import SimulationConfig, race_track, track_variants
 from src.genetic import crossover, mutate, next_generation
-from src.grand_prix import Entrant, GrandPrix, Result, build_grid
-from src.neural_network import NeuralNetwork
 from src.obstacles import ObstacleField
-from src.simulation import Simulation
+from src.simulation import Result, Simulation, Squad, Stage, format_results
 from src.track import Track
 from src.track_check import TrackReport, check_track
 
 __all__ = [
     "Brain",
-    "BrainFactory",
     "BrainRef",
     "Car",
-    "Entrant",
-    "GrandPrix",
-    "Result",
-    "Track",
     "ObstacleField",
-    "NeuralNetwork",
+    "Result",
     "Simulation",
     "SimulationConfig",
+    "Squad",
+    "Stage",
+    "Track",
     "TrackReport",
-    "check_track",
     "build_brain",
-    "build_grid",
+    "check_track",
+    "color_of",
     "crossover",
+    "entrants",
+    "format_results",
     "mutate",
     "next_generation",
     "race_track",
