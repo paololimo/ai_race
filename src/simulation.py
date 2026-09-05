@@ -101,7 +101,7 @@ class Simulation:
         entries: Optional[Sequence[BrainRef]] = None,
         record: Optional[Path] = None,
         record_every: int = 3,
-        record_clip: float = 3.0,
+        record_clip: Optional[float] = None,
         throttle: bool = True,
     ) -> None:
         """`entries` overrides who is on the grid.
@@ -162,12 +162,15 @@ class Simulation:
             if render and record is not None
             else None
         )
-        # Which generations are filmed, and for how long. Every frame of a clip
-        # is kept and played at the rate it was drawn, so the driving inside one
-        # is exactly what it looked like; the video cuts between clips instead.
+        # By default every drawn frame is kept: what most people mean by
+        # recording is a recording. `record_clip` is the opt-in that turns a
+        # two-hour file into a short one, and it works by dropping whole
+        # generations rather than by thinning frames — thinning would replace
+        # the motion with a slideshow, and speeding the file up afterwards
+        # does exactly the same thing at exactly the same cost.
         self._film_every = max(1, record_every)
-        self._film_frames = max(1, int(record_clip * cfg.fps))
-        self._film_all = False  # a race is short enough to keep whole
+        self._film_frames = int(record_clip * cfg.fps) if record_clip else None
+        self._film_all = record_clip is None
         # Without a window to watch there is no reason to hold 60 frames a
         # second, and holding it would make a recording take as long as the
         # training takes to watch.
@@ -349,10 +352,11 @@ class Simulation:
         frames and the motion is gone. Whole generations are left out instead,
         and the ones kept are kept unthinned.
 
-        The last generation is filmed to the end. Every other clip is the first
-        few seconds off the line, which is the right way to compare one
-        generation against another but means the video would never once show a
-        trained car completing anything — the whole point of having watched.
+        With no `record_clip` there is nothing to decide: every frame is kept.
+        Otherwise the last generation is still filmed to the end — every other
+        clip is the first few seconds off the line, which is the right way to
+        compare one generation against another but means the video would never
+        once show a trained car completing anything.
         """
         if self._film_all or generation >= self.cfg.generations:
             return True

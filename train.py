@@ -3,7 +3,7 @@
     python train.py                       # dashboard, everyone training together
     python train.py --headless            # no window, all cores
     python train.py --generations 200
-    python train.py --headless --record outputs/training.mp4
+    python train.py --headless --record outputs/training.mp4   # every frame
 
 The entrants are whatever files are in `src/brains/`: adding one there puts it
 in the next run with no change here. Each champion is written to

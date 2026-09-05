@@ -23,20 +23,19 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "to record faster than real time: the frame rate cap is then lifted.",
     )
     parser.add_argument(
+        "--record-clip",
+        type=float,
+        default=None,
+        help="film only the first N seconds of each circuit, in one generation "
+        "in --record-every, instead of the whole run. Turns a 120-generation "
+        "run into minutes rather than hours, at the cost of cutting between "
+        "clips. Without it every frame is kept.",
+    )
+    parser.add_argument(
         "--record-every",
         type=int,
         default=3,
-        help="film one generation in N (default 3). Frames are never thinned — "
-        "that would replace motion with a slideshow — so this and --record-clip "
-        "are what decide the video's length.",
-    )
-    parser.add_argument(
-        "--record-clip",
-        type=float,
-        default=3.0,
-        help="seconds filmed of each circuit, in each filmed generation "
-        "(default 3.0). Length = generations / every x circuits x clip, so the "
-        "defaults turn a 120-generation run into six minutes.",
+        help="with --record-clip: film one generation in N (default 3).",
     )
 
 

@@ -65,7 +65,8 @@ pip install -r requirements.txt
 python train.py                                # dashboard, everyone at once (ESC to quit)
 python train.py --headless --generations 200   # fast training, all cores
 python train.py --shown 20                     # draw more cars per entrant
-python train.py --headless --record run.mp4    # 6-minute video of the run
+python train.py --headless --record run.mp4    # every frame, ~70 min of video
+python train.py --headless --record run.mp4 --record-clip 3   # ~6 min instead
 python race.py --headless --record race.mp4    # the race, filmed whole
 python race.py                                 # the race, on the unseen circuit
 python race.py --track 1                       # the same grid on a training circuit
@@ -80,29 +81,32 @@ Each champion is written to `outputs/<name>.npz`, which is what `race.py` reads.
 python train.py --headless --record outputs/run.mp4
 ```
 
-A hundred minutes of training cannot become six minutes of video by keeping one
-frame in twenty: the cars then jump a whole second between frames and the
-motion — the only thing worth watching — is gone. So the compression comes from
-leaving whole stretches out, not from thinning the ones kept.
+**Every frame is kept.** A 120-generation run is around 70 minutes of video and
+700 MB — enough to speed up afterwards to whatever suits, which is simpler than
+deciding in advance and better than any rule this program could pick for you:
 
-The run is filmed in **clips**. Every third generation, the first three seconds
-of each circuit are recorded at the full 60 fps and played back at 60 fps, so
-the driving inside a clip is exactly what it looked like; between clips the
-video cuts forward. The panel carries the generation number, so the cuts read
-as progress. Each clip starts on the line, which makes the same situation
-directly comparable from generation 1 to generation 120.
+```bash
+ffmpeg -i outputs/run.mp4 -filter:v "setpts=PTS/6" -an outputs/run-6x.mp4
+```
 
-The **last generation is filmed to the end**. Every other clip is three seconds
-off the line, which is the right way to compare generations but would mean the
-video never once shows a trained car completing anything.
+At 4-6x the result is still smooth: a car covers 4 px a frame, so 6x moves it
+24 px between frames on a 1000 px circuit. Past about 8x it starts to stutter,
+and at 20x — which is what "one frame in twenty" amounts to, whether the
+thinning happens at capture or at playback — a car crosses a whole corner
+between frames and the motion is gone.
 
-    length = generations / --record-every x 3 circuits x --record-clip
+`--record-clip S` is the shortcut for when 70 minutes is not wanted at all. It
+films only the first S seconds of each circuit, in one generation in
+`--record-every`, cutting between them: at `--record-clip 3` a 120-generation
+run is six minutes. Each clip starts on the line, so the same situation is
+directly comparable across generations, and the panel carries the generation
+number so the cuts read as progress. The last generation is filmed to the end
+either way — every other clip is three seconds off the line, which would mean
+the video never once shows a trained car completing anything.
 
-At the defaults a 120-generation run is 40 clips per circuit, 18 000 frames,
-**six minutes at 60 fps, about 60 MB**. `x264` at `crf 16`, preset `slow`,
-`yuv420p` and `+faststart`: thin lines and small text are what h264 destroys
-first and they are most of this picture, so it is encoded for screen capture
-rather than for camera footage.
+`x264` at `crf 16`, preset `slow`, `yuv420p` and `+faststart`: thin lines and
+small text are what h264 destroys first and they are most of this picture, so
+it is encoded for screen capture rather than for camera footage.
 
 `--headless` lifts the 60 fps cap — with no window there is nothing to hold the
 loop back, so the recording takes as long as the drawing does rather than as
