@@ -19,10 +19,42 @@ def select_breeding_pool(
     return [genomes[i] for i in ranked]
 
 
-def crossover(parent_a: np.ndarray, parent_b: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    """Uniform crossover: each gene is drawn at random from one of the parents."""
-    mask = rng.random(parent_a.size) < 0.5
-    return np.where(mask, parent_a, parent_b)
+def crossover(
+    parent_a: np.ndarray,
+    parent_b: np.ndarray,
+    rng: np.random.Generator,
+    mode: str = "uniform",
+) -> np.ndarray:
+    """Recombine two genomes.
+
+    `uniform` draws every gene independently, which is the harshest of the three
+    on a neural genome: a neuron's incoming weights only mean anything together,
+    and drawing each from a different parent hands the child a unit that detects
+    neither of the things its parents detected. Recombination then behaves more
+    like heavy mutation than like inheritance.
+
+    `one-point` and `two-point` cut the vector into runs instead, so whole
+    stretches of a parent survive intact — and with them, whatever co-adapted
+    groups happen to sit inside a run. `none` skips recombination entirely and
+    leaves mutation to do the work, which on small genomes is often no worse.
+
+    This is a property of the harness, identical for every entrant.
+    """
+    size = parent_a.size
+    if mode == "none":
+        return parent_a.copy()
+    if mode == "uniform":
+        return np.where(rng.random(size) < 0.5, parent_a, parent_b)
+    if mode in ("one-point", "two-point"):
+        count = 1 if mode == "one-point" else 2
+        cuts = np.sort(rng.choice(np.arange(1, size), size=min(count, size - 1), replace=False))
+        taking, child, previous = True, np.empty_like(parent_a), 0
+        for cut in (*cuts, size):
+            source = parent_a if taking else parent_b
+            child[previous:cut] = source[previous:cut]
+            taking, previous = not taking, cut
+        return child
+    raise ValueError(f"Unknown crossover mode {mode!r}")
 
 
 def mutate(genome: np.ndarray, cfg: GeneticConfig, rng: np.random.Generator) -> np.ndarray:
@@ -46,7 +78,7 @@ def next_generation(
     children: List[np.ndarray] = list(elites)
     while len(children) < cfg.population_size:
         a, b = rng.choice(len(pool), size=2, replace=len(pool) < 2)
-        child = crossover(pool[a], pool[b], rng)
+        child = crossover(pool[a], pool[b], rng, cfg.crossover)
         children.append(mutate(child, cfg, rng))
 
     logger.debug("New generation: %d children from a pool of %d", len(children), len(pool))

@@ -43,9 +43,20 @@ logger = logging.getLogger("ablation")
 
 @dataclass(frozen=True)
 class Variant:
+    """One thing to measure, on one of two independent axes.
+
+    `hidden` and `symmetric` are the *architecture*, which lives in one
+    entrant's own file and is the only thing a competitor may vary. `crossover`
+    is the *harness*, shared by everyone, so changing it changes the experiment
+    for all entrants equally and advantages nobody. They are varied here in one
+    script only because both are questions about the same run; do not read a
+    crossover result as an argument about any one architecture.
+    """
+
     name: str
-    hidden: Tuple[int, ...]
+    hidden: Tuple[int, ...] = (14, 14)
     symmetric: bool = False
+    crossover: str = "uniform"
 
     def ref(self) -> BrainRef:
         """This variant as an entrant the harness can put on the grid."""
@@ -53,14 +64,32 @@ class Variant:
         return BrainRef("paololimo", spec_from_config(cfg))
 
 
-VARIANTS: Tuple[Variant, ...] = (
+# Architecture: is the current default too big to search in 120 generations,
+# and does imposing the mirror symmetry pay for itself?
+ARCHITECTURES: Tuple[Variant, ...] = (
     Variant("linear", ()),
     Variant("8", (8,)),
     Variant("14", (14,)),
     Variant("14-14", (14, 14)),  # the current default
     Variant("24-24", (24, 24)),
+    Variant("8 sym", (8,), symmetric=True),
+    Variant("14 sym", (14,), symmetric=True),
     Variant("14-14 sym", (14, 14), symmetric=True),
 )
+
+# Harness: uniform crossover splits a neuron's incoming weights between parents,
+# so recombination behaves closer to heavy mutation than to inheritance. Cutting
+# the vector into runs keeps co-adapted groups together; dropping crossover
+# altogether leaves the work to mutation, which on small genomes is often no
+# worse. Held at the default architecture so only the operator moves.
+OPERATORS: Tuple[Variant, ...] = (
+    Variant("uniform", crossover="uniform"),
+    Variant("one-point", crossover="one-point"),
+    Variant("two-point", crossover="two-point"),
+    Variant("mutation only", crossover="none"),
+)
+
+VARIANTS: Tuple[Variant, ...] = ARCHITECTURES + OPERATORS
 
 
 def parameter_count(variant: Variant, cfg: SimulationConfig, inputs: int) -> int:
@@ -88,7 +117,9 @@ def run_one(variant: Variant, seed: int, generations: int, population: int) -> T
             seed=seed,
             generations=generations,
             checkpoint_dir=out,
-            genetic=replace(base.genetic, population_size=population),
+            genetic=replace(
+                base.genetic, population_size=population, crossover=variant.crossover
+            ),
         )
         simulation = Simulation(cfg, render=False, entries=[variant.ref()])
         simulation.train()
@@ -140,34 +171,45 @@ def main() -> None:
             print(f"  [{done}/{len(jobs)}] {name} seed {seed}: race {laps:.2f} laps", flush=True)
     print(f"\nfinished in {(time.time() - started) / 60:.1f} minutes\n")
 
-    header = (
-        f"{'variant':<12} {'params':>6} {'train (median)':>16} "
-        f"{'race (median)':>16}  {'race, per seed'}"
-    )
-    print(header)
-    print("-" * len(header))
-
+    # Median and spread together, never the median alone. A genetic algorithm on
+    # this problem swings from 0.04 to 3.05 laps on the same architecture with
+    # only the seed changed, so a table of medians invites a conclusion the data
+    # does not support. If the spreads overlap, the difference is not measured.
     results = []
-    for variant in VARIANTS:
-        runs = sorted(collected.get(variant.name, []))
-        training = [fitness for _, fitness, _ in runs]
-        racing = [laps for _, _, laps in runs]
-        if not runs:
-            continue
+    for group, title in ((ARCHITECTURES, "ARCHITECTURE"), (OPERATORS, "CROSSOVER (harness-wide)")):
+        header = (
+            f"{title:<14} {'params':>6} {'train med':>10} "
+            f"{'race med':>9} {'race range':>14}  {'per seed'}"
+        )
+        print(f"\n{header}\n" + "-" * len(header))
+        for variant in group:
+            runs = sorted(collected.get(variant.name, []))
+            if not runs:
+                continue
+            training = [fitness for _, fitness, _ in runs]
+            racing = [laps for _, _, laps in runs]
 
-        row = {
-            "variant": variant.name,
-            "hidden": list(variant.hidden),
-            "symmetric": variant.symmetric,
-            "parameters": parameter_count(variant, base, inputs),
-            "training": training,
-            "race": racing,
-        }
-        results.append(row)
+            row = {
+                "variant": variant.name,
+                "hidden": list(variant.hidden),
+                "symmetric": variant.symmetric,
+                "crossover": variant.crossover,
+                "parameters": parameter_count(variant, base, inputs),
+                "training": training,
+                "race": racing,
+            }
+            results.append(row)
+            print(
+                f"{variant.name:<14} {row['parameters']:>6} "
+                f"{statistics.median(training):>10.2f} {statistics.median(racing):>9.2f} "
+                f"{min(racing):>6.2f}-{max(racing):<7.2f}  "
+                + " ".join(f"{v:.2f}" for v in racing)
+            )
+
+    if args.seeds < 5:
         print(
-            f"{variant.name:<12} {row['parameters']:>6} "
-            f"{statistics.median(training):>16.2f} {statistics.median(racing):>16.2f}  "
-            + " ".join(f"{v:.2f}" for v in racing)
+            f"\nOnly {args.seeds} seeds: the spread will swamp any difference between "
+            f"variants. Use --seeds 7 or more before concluding anything."
         )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -184,3 +184,38 @@ def test_ray_stops_at_the_verge(track: Track, rng: np.random.Generator) -> None:
             car.y + np.sin(angle) * (distance - 2),
         )
         assert track.is_on_road(*just_before)
+
+
+def test_every_crossover_mode_produces_a_legal_child(rng: np.random.Generator) -> None:
+    """Whatever the operator, a child is the right size and made of its parents."""
+    a, b = np.zeros(60), np.ones(60)
+    for mode in ("uniform", "one-point", "two-point", "none"):
+        child = crossover(a, b, rng, mode)
+        assert child.size == a.size, mode
+        assert set(np.unique(child)) <= {0.0, 1.0}, mode
+
+
+def test_run_crossovers_keep_stretches_of_one_parent(rng: np.random.Generator) -> None:
+    """The point of cutting rather than sampling: co-adapted groups survive.
+
+    Uniform crossover changes parent at roughly every second gene, which splits
+    a neuron's incoming weights between both parents and hands the child a unit
+    that detects neither thing. A one-point cut switches once.
+    """
+    a, b = np.zeros(400), np.ones(400)
+    switches = lambda g: int(np.count_nonzero(np.diff(g)))  # noqa: E731
+    assert switches(crossover(a, b, rng, "one-point")) <= 1
+    assert switches(crossover(a, b, rng, "two-point")) <= 2
+    assert switches(crossover(a, b, rng, "uniform")) > 100
+
+
+def test_mutation_only_leaves_recombination_out() -> None:
+    """`none` must hand back a parent untouched, not a blend of two."""
+    rng = np.random.default_rng(3)
+    a, b = np.zeros(50), np.ones(50)
+    assert np.array_equal(crossover(a, b, rng, "none"), a)
+
+
+def test_an_unknown_crossover_mode_is_refused(rng: np.random.Generator) -> None:
+    with pytest.raises(ValueError, match="Unknown crossover"):
+        crossover(np.zeros(10), np.ones(10), rng, "telepathy")

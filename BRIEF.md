@@ -133,9 +133,14 @@ Each edge is `(from layer, to layer, weight matrix)`, the matrix shaped
 crossover gene by gene, then gaussian noise (σ 0.3) on 5% of genes. Two
 consequences worth designing around:
 
-- Neighbouring genes are recombined independently, so a layout that keeps
-  related parameters adjacent survives crossover better than one that scatters
-  them.
+- Crossover is **uniform**: every gene is drawn independently from one parent or
+  the other, so where a parameter sits in the vector changes nothing. Do not
+  design your layout around adjacency; it buys you nothing here.
+- What does bite is that a neuron's incoming weights are a co-adapted set — they
+  only mean something together — and uniform crossover hands roughly half of
+  them to each parent. Recombination therefore behaves closer to heavy mutation
+  than to inheritance, and an architecture whose units degrade gracefully when
+  mixed keeps more of what evolution finds.
 - `genome_size` must be identical for every instance built with the same `spec`,
   and must not change over an instance's lifetime.
 

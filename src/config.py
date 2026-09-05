@@ -177,6 +177,10 @@ class GeneticConfig:
     breeding_fraction: float = 0.3
     mutation_rate: float = 0.05
     mutation_scale: float = 0.3
+    # "uniform", "one-point", "two-point" or "none". Shared by every entrant, so
+    # changing it changes the experiment for all of them equally and advantages
+    # nobody. See `genetic.crossover` for what each costs a neural genome.
+    crossover: str = "uniform"
 
 
 @dataclass(frozen=True)
