@@ -263,30 +263,55 @@ class Dashboard:
         return y
 
     def _chart(self, y: int, curves: Sequence[Curve]) -> None:
-        """Best fitness per generation, one line per entrant in its colour."""
+        """Each entrant's progress, over the difficulty of the draw they shared.
+
+        The best score *of a generation* is not a progress curve. Every
+        generation runs on a fresh start point and a different island layout, so
+        even an elite carried over untouched scores differently from one to the
+        next — and all the entrants rise and fall together on it, which is the
+        signature of the shared draw rather than of anyone's search.
+
+        So the running maximum is drawn per entrant: monotonic, and the line
+        that answers "am I still improving, or am I on a plateau?". The raw
+        per-generation score is drawn once, in grey, because every entrant meets
+        the same draw and four copies of it would be four copies of one fact.
+        """
         height = self.height - y - 14
         if height < 60:
             return
-        top = self._card(y, height, "BEST FITNESS / GENERATION")
-        longest = max((len(history) for _, _, history in curves), default=0)
+        top = self._card(y, height, "BEST SO FAR")
+        tracked = [(c, h) for _, c, h in curves if len(h) >= 2]
+        longest = max((len(h) for _, h in tracked), default=0)
         if longest < 2:
             self._text("collecting...", 28, top + 14, self.font_small, _MUTED)
             return
 
+        # The legend and the scale go in the title row, which is otherwise dead
+        # space: an axis label below the plot would cost the plot its height,
+        # and height is the one thing this chart cannot spare.
+        self._text("grey: the draw", 130, top - 18, self.font_small, _MUTED)
         plot = pygame.Rect(28, top + 4, self.width - 56, height - 46)
-        peak = max((max(h) for _, _, h in curves if h), default=1.0) or 1.0
-        for _, color, history in curves:
-            if len(history) < 2:
-                continue
+        running = [np.maximum.accumulate(np.asarray(h, dtype=float)) for _, h in tracked]
+        peak = max(float(r[-1]) for r in running) or 1.0
+
+        def line(values: Sequence[float], color: Color, thickness: int):
             points: List[Tuple[float, float]] = [
                 (
                     plot.x + plot.width * i / (longest - 1),
-                    plot.bottom - plot.height * (value / peak),
+                    plot.bottom - plot.height * (float(value) / peak),
                 )
-                for i, value in enumerate(history)
+                for i, value in enumerate(values)
             ]
-            pygame.draw.lines(self.surface, color, False, points, 2)
-            pygame.draw.circle(self.surface, color, points[-1], 3)
+            pygame.draw.lines(self.surface, color, False, points, thickness)
+            return points
+
+        shared = [
+            float(np.mean([h[i] for _, h in tracked if i < len(h)])) for i in range(longest)
+        ]
+        line(shared, _MUTED, 1)
+        for (color, _), values in zip(tracked, running):
+            pygame.draw.circle(self.surface, color, line(values, color, 2)[-1], 3)
+
         self._text(f"{peak:.2f}", self.width - 96, top - 18, self.font_small, _MUTED)
 
     def _card_height(self, count: int) -> int:
