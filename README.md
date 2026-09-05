@@ -92,6 +92,10 @@ video cuts forward. The panel carries the generation number, so the cuts read
 as progress. Each clip starts on the line, which makes the same situation
 directly comparable from generation 1 to generation 120.
 
+The **last generation is filmed to the end**. Every other clip is three seconds
+off the line, which is the right way to compare generations but would mean the
+video never once shows a trained car completing anything.
+
     length = generations / --record-every x 3 circuits x --record-clip
 
 At the defaults a 120-generation run is 40 clips per circuit, 18 000 frames,

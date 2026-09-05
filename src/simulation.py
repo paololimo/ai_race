@@ -348,8 +348,13 @@ class Simulation:
         Not one frame in N: at that spacing a car crosses a corner between two
         frames and the motion is gone. Whole generations are left out instead,
         and the ones kept are kept unthinned.
+
+        The last generation is filmed to the end. Every other clip is the first
+        few seconds off the line, which is the right way to compare one
+        generation against another but means the video would never once show a
+        trained car completing anything — the whole point of having watched.
         """
-        if self._film_all:
+        if self._film_all or generation >= self.cfg.generations:
             return True
         return (generation - 1) % self._film_every == 0 and frame < self._film_frames
 
