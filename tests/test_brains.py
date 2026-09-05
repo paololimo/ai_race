@@ -184,3 +184,53 @@ def test_two_brains_meet_the_same_conditions(tmp_path) -> None:
         return list(dict.fromkeys(seen))
 
     assert conditions([4]) == conditions([24, 24])
+
+
+def test_the_panel_survives_a_brain_it_cannot_diagram() -> None:
+    """The protocol stops at `forward`: a brain owes no account of its layers.
+
+    The panel drew the leader's weight matrices directly, so any architecture
+    without `layer_sizes` and `weights` — every competitor's, potentially — took
+    the window down on the first frame it led.
+    """
+    import os
+
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    from src.config import CarConfig
+    from src.car import Car
+    from src.dashboard import Dashboard
+    from src.track import Track
+    from src.config import TrackConfig
+
+    pygame.init()
+    track = Track(TrackConfig())
+    brain = build_brain(BrainRef("test-stub", {}), INPUTS, np.random.default_rng(0))
+    assert not hasattr(brain, "layer_sizes")
+    car = Car(track, brain, CarConfig())
+    car.update()
+
+    panel = Dashboard(380, track.size[1]).render(
+        generation=1, track_name="serpentine", track_number=1, track_count=3,
+        frame=1, max_frames=100, cars=[car], leader=car, best_ever=0.0, history=[0.1, 0.2],
+    )
+    assert panel.get_width() == 380
+
+
+def test_sensor_endpoints_are_plain_floats() -> None:
+    """pygame refuses numpy scalars, and the clearance field is float32.
+
+    A ray that took at least one step sized from that field came back with
+    float32 coordinates while a ray that ran to its full range came back with
+    Python floats — so the window died on some frames and not others.
+    """
+    from src.car import Car
+    from src.config import CarConfig, TrackConfig
+    from src.track import Track
+
+    car = Car(Track(TrackConfig()), build_brain(BrainRef("baseline", {}), INPUTS, np.random.default_rng(0)), CarConfig())
+    car.update()
+    assert car.sensor_endpoints
+    for x, y in car.sensor_endpoints:
+        assert type(x) is float and type(y) is float

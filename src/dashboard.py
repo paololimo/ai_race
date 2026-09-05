@@ -17,6 +17,17 @@ _POSITIVE = (110, 220, 150)
 _NEGATIVE = (235, 100, 110)
 
 
+def _is_drawable(brain: object) -> bool:
+    """Whether a brain exposes enough structure to diagram.
+
+    The `Brain` protocol deliberately stops at `forward` and the genome: a
+    competitor's architecture owes the harness no account of its internals, and
+    plenty of them have no layer stack to draw. So the panel asks, rather than
+    assumes, and falls back to naming the brain when the answer is no.
+    """
+    return hasattr(brain, "layer_sizes") and hasattr(brain, "weights")
+
+
 class Dashboard:
     """Renders the right-hand panel onto its own surface."""
 
@@ -127,10 +138,18 @@ class Dashboard:
 
     def _network_card(self, y: int, leader: Optional[Car]) -> int:
         height = self.height - y - 16
-        title = "-".join(str(n) for n in (leader.brain.layer_sizes if leader else ()))
-        top = self._card(y, height, f"LEADER NETWORK  {title}" if leader else "LEADER NETWORK")
         if leader is None:
+            self._card(y, height, "LEADER NETWORK")
             return y + height
+        if not _is_drawable(leader.brain):
+            top = self._card(y, height, "LEADER BRAIN")
+            self._text(type(leader.brain).__name__, 24, top, self.font, _ACCENT)
+            self._text(f"{leader.brain.genome_size} parameters", 24, top + 20, self.font, _MUTED)
+            self._text("no layer stack to draw", 24, top + 38, self.font_small, _MUTED)
+            return y + height
+
+        title = "-".join(str(n) for n in leader.brain.layer_sizes)
+        top = self._card(y, height, f"LEADER NETWORK  {title}")
         genome_id = id(leader.brain)
         inner = (self.width - 48, height - 40)
         if self._cached_genome_id != genome_id or self._network_cache is None:

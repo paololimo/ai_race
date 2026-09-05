@@ -107,7 +107,11 @@ class Car:
         for angle in self._sensor_angles():
             distance, endpoint = self._cast_wall_ray(math.cos(angle), math.sin(angle))
             walls.append(distance / self.cfg.sensor_range)
-            endpoints.append(endpoint)
+            # Back to Python floats. The clearance field is float32, so a ray
+            # that took at least one step from it returns float32 coordinates,
+            # which pygame refuses to draw — and only some rays do, which is why
+            # the window died on one frame and not the next.
+            endpoints.append((float(endpoint[0]), float(endpoint[1])))
 
         self.wall_readings = walls
         self.sensor_endpoints = endpoints
