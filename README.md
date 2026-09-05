@@ -31,8 +31,9 @@ src/
 ├── track.py            # procedural circuit generation + drivable mask
 ├── track_check.py      # geometric validation of a generated circuit
 ├── car.py              # physics, 7 ray sensors, braking, fitness
-├── renderer.py         # window: circuit on the left, panel on the right
-├── dashboard.py        # panel: standings and a fitness curve per entrant
+├── renderer.py         # window: circuit, panel on the right, strip below
+├── dashboard.py        # panel: standings, brain diagrams, run stats
+├── analysis.py         # strip: progress, genetic spread, per-circuit bars
 ├── simulation.py       # the generational loop, and the race
 ├── parallel.py         # population scoring across worker processes
 └── cli.py              # shared arguments and configuration
@@ -238,11 +239,37 @@ of wall-clock time. For a real run use `--headless`.
 
 ## Dashboard
 
-1380×700 window: circuit on the left, panel on the right with the generation,
-current circuit (`TRACK k/3`), progress through the frame budget, the standings
-— one row per entrant in its colour, ordered by who is furthest round — and the
-best-fitness history, one curve per entrant. Both grow by themselves when an
-entrant is added.
+1380×980: the circuit top-left, the panel down the right, and a strip of
+analyses under the circuit — space the window used to waste, which is what
+leaves the panel cards tall enough to draw a brain in. The window shrinks to
+whatever the display actually offers (`renderer.fit_window`); a screen too
+short for the strip gets the panel alone rather than a window running off the
+bottom.
+
+**Panel.** Generation, current circuit (`TRACK k/3`), progress through the
+frame budget, then one card per entrant in its colour, ordered by who is
+furthest round: laps, best so far, how many of the drawn cars are alive, its
+parameter count, and its own network drawn full width. Then a `RUN` card —
+generation, the *current* mutation size (it anneals, so it is a different
+number every generation), evaluations spent, elapsed and remaining.
+
+**Strip.** Three questions a neuroevolution run cannot be read without:
+
+- **Best so far.** The running maximum per entrant, which is monotonic and is
+  the only line here that means progress. The raw per-generation best is kept
+  faintly behind it: it swings with the draw rather than with the search — all
+  the entrants rise and fall together on it — but the *differences* between the
+  faint lines are where one entrant handles a hard draw better than another.
+- **Genetic spread.** Mean per-gene standard deviation of the population,
+  normalised to each entrant's own first generation so different genome sizes
+  compare on one axis. A line on the floor means the population has converged
+  to one genome in many copies and every further generation buys nothing.
+- **Best per circuit.** Grouped by circuit, one bar per entrant. Fitness is
+  `worst + 0.35 × mean`, so an entrant's solid bar is its weakest circuit —
+  the one actually leading its number, and until now summed away before anyone
+  could see it.
+
+Everything grows by itself when an entrant is added.
 
 ## The race
 

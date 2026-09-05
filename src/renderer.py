@@ -1,7 +1,7 @@
 """Pygame window: the circuit on the left, the dashboard panel on the right."""
 
 import math
-from typing import Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 import pygame
 
@@ -10,15 +10,59 @@ from src.track import Track
 
 _SENSOR_COLOR = (90, 200, 250)
 
+# Room for the window frame, the title bar and whatever the desktop keeps at
+# the edges of the screen.
+_CHROME_W, _CHROME_H = 60, 120
+_MIN_PANEL = 340
+_MIN_STRIP = 150  # below this the analyses are unreadable, so there are none
+
+
+def fit_window(
+    track: Tuple[int, int],
+    panel: int,
+    strip: int,
+    screen: Optional[Tuple[int, int]] = None,
+) -> Tuple[int, int]:
+    """Panel width and strip height that still fit this display.
+
+    The window wants a panel beside the circuit and a strip of analyses under
+    it, which together ask for more than a small screen has. Rather than pick
+    one size that is either cramped everywhere or off the edge somewhere, ask
+    the display; if it cannot be asked, take the request at face value.
+
+    A strip too short to read is returned as no strip at all. Half an analysis
+    is worse than none: the panel keeps the standings either way.
+
+    `screen` overrides what the display reports, which is the only way to test
+    the arithmetic without owning the monitor it runs on.
+    """
+    if screen is None:
+        try:
+            info = pygame.display.Info()
+            screen = (info.current_w, info.current_h)
+        except pygame.error:
+            return panel, strip
+    available_w, available_h = screen
+    if available_w <= track[0] or available_h <= track[1]:  # no display, or a dummy one
+        return panel, strip
+    panel = max(_MIN_PANEL, min(panel, available_w - track[0] - _CHROME_W))
+    strip = min(strip, max(0, available_h - track[1] - _CHROME_H))
+    return panel, (strip if strip >= _MIN_STRIP else 0)
+
 
 class Renderer:
     """Owns the window. Track drawing here, panel content in `Dashboard`."""
 
-    def __init__(self, track_size: Tuple[int, int], panel_width: int, fps: int) -> None:
+    def __init__(
+        self, track_size: Tuple[int, int], panel_width: int, fps: int, strip_height: int = 0
+    ) -> None:
         self.track_size = track_size
         self.panel_width = panel_width
+        self.strip_height = strip_height
         self.fps = fps
-        self.screen = pygame.display.set_mode((track_size[0] + panel_width, track_size[1]))
+        self.screen = pygame.display.set_mode(
+            (track_size[0] + panel_width, track_size[1] + strip_height)
+        )
         pygame.display.set_caption("cars_ai - evolutionary self-driving cars")
         self.clock = pygame.time.Clock()
 
@@ -70,8 +114,10 @@ class Renderer:
             for endpoint in leader.sensor_endpoints:
                 pygame.draw.line(self.screen, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
 
-    def present(self, panel: pygame.Surface) -> None:
-        """Blit the dashboard panel and flip the frame."""
+    def present(self, panel: pygame.Surface, strip: Optional[pygame.Surface] = None) -> None:
+        """Blit the panel, then the analysis strip under the circuit, and flip."""
         self.screen.blit(panel, (self.track_size[0], 0))
+        if strip is not None:
+            self.screen.blit(strip, (0, self.track_size[1]))
         pygame.display.flip()
         self.clock.tick(self.fps)

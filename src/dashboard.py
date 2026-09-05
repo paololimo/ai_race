@@ -1,7 +1,9 @@
-"""Side panel: who is ahead, what each brain is doing, and how it has improved.
+"""Side panel: who is ahead, what each brain is, and where the run has got to.
 
 The layout is derived from how many entrants there are, so adding a file to
-`src/brains/` adds a card and a curve with no change here.
+`src/brains/` adds a card with no change here. The analyses live on the strip
+under the circuit — see `analysis.py` — which is what leaves these cards tall
+enough to draw a brain in.
 """
 
 import logging
@@ -15,19 +17,21 @@ from src.brains import Brain, Color
 
 logger = logging.getLogger(__name__)
 
-_BG = (18, 20, 32)
-_CARD = (28, 31, 48)
-_TEXT = (232, 234, 245)
-_MUTED = (140, 146, 170)
-_ACCENT = (255, 176, 60)
-_POSITIVE = (110, 220, 150)
-_NEGATIVE = (235, 100, 110)
+BG = (18, 20, 32)
+CARD = (28, 31, 48)
+TEXT = (232, 234, 245)
+MUTED = (140, 146, 170)
+ACCENT = (255, 176, 60)
+POSITIVE = (110, 220, 150)
+NEGATIVE = (235, 100, 110)
 
 # Sensors are probed around mid-range: half-open road, half speed. Reading the
 # response at the extremes would mostly show tanh saturation rather than what
 # the brain does while driving.
 _PROBE_LEVEL = 0.5
 _PROBE_STEP = 0.05
+
+_STATS_HEIGHT = 112
 
 
 @dataclass(frozen=True)
@@ -40,10 +44,24 @@ class Entry:
     alive: int
     shown: int
     best: float
+    params: int = 0
     brain: Optional[Brain] = None
 
 
-Curve = Tuple[str, Color, Sequence[float]]
+@dataclass(frozen=True)
+class Series:
+    """One entrant's history, for the analyses."""
+
+    name: str
+    color: Color
+    # Best fitness in each generation. Not a progress curve on its own: every
+    # generation draws a fresh start point and a different island layout, so
+    # even an untouched elite scores differently from one to the next.
+    best: Sequence[float]
+    # Mean per-gene standard deviation of the population, per generation.
+    spread: Sequence[float]
+    # Best score on each circuit, this generation.
+    circuits: Sequence[float]
 
 
 def response(brain: Brain, input_size: int) -> np.ndarray:
@@ -65,6 +83,11 @@ def response(brain: Brain, input_size: int) -> np.ndarray:
     return jacobian
 
 
+def tint(color: Color, strength: float) -> Color:
+    """`color` faded towards the card background by `strength` in [0, 1]."""
+    return tuple(int(CARD[k] + (color[k] - CARD[k]) * strength) for k in range(3))
+
+
 class Dashboard:
     """Renders the right-hand panel onto its own surface."""
 
@@ -84,29 +107,35 @@ class Dashboard:
         self._diagrams: Dict[int, pygame.Surface] = {}
         self._broken: Set[str] = set()  # named once, not once a frame
 
-    def _text(self, text: str, x: int, y: int, font: pygame.font.Font, color=_TEXT) -> None:
+    # -- primitives ----------------------------------------------------------
+
+    def _text(self, text: str, x: int, y: int, font: pygame.font.Font, color=TEXT) -> None:
         self.surface.blit(font.render(text, True, color), (x, y))
 
-    def _card(self, y: int, height: int, title: str) -> int:
+    def _card(self, x: int, y: int, width: int, height: int, title: str = "") -> int:
         """Draw a titled card and return the y where its content starts."""
-        rect = pygame.Rect(12, y, self.width - 24, height)
-        pygame.draw.rect(self.surface, _CARD, rect, border_radius=8)
-        self._text(title, 24, y + 8, self.font_small, _MUTED)
+        pygame.draw.rect(
+            self.surface, CARD, pygame.Rect(x, y, width, height), border_radius=8
+        )
+        if title:
+            self._text(title, x + 12, y + 8, self.font_small, MUTED)
         return y + 26
 
     def _header(
         self, generation: int, track: str, number: int, count: int, frame: int, total: int
     ) -> int:
         self._text(f"GEN {generation}" if generation else "RACE", 16, 14, self.font_big)
-        self._text(f"TRACK {number}/{count}", self.width - 150, 16, self.font, _MUTED)
-        self._text(f"STEP {frame}/{total}", self.width - 150, 34, self.font, _MUTED)
-        self._text(track.upper(), 16, 46, self.font, _ACCENT)
+        self._text(f"TRACK {number}/{count}", self.width - 150, 16, self.font, MUTED)
+        self._text(f"STEP {frame}/{total}", self.width - 150, 34, self.font, MUTED)
+        self._text(track.upper(), 16, 46, self.font, ACCENT)
 
         bar = pygame.Rect(16, 68, self.width - 32, 4)
-        pygame.draw.rect(self.surface, _CARD, bar, border_radius=2)
+        pygame.draw.rect(self.surface, CARD, bar, border_radius=2)
         filled = pygame.Rect(16, 68, int((self.width - 32) * frame / max(1, total)), 4)
-        pygame.draw.rect(self.surface, _ACCENT, filled, border_radius=2)
+        pygame.draw.rect(self.surface, ACCENT, filled, border_radius=2)
         return 82
+
+    # -- one entrant's brain -------------------------------------------------
 
     def _topology(self, topology, size: Tuple[int, int]) -> pygame.Surface:
         """An entrant's real structure: its layers, its nodes, its weights.
@@ -117,7 +146,7 @@ class Dashboard:
         more than one column is a skip.
         """
         surface = pygame.Surface(size)
-        surface.fill(_CARD)
+        surface.fill(CARD)
         width, height = size
         margin_x, margin_y = 12, 9
         columns = max(column for _, _, column in topology.layers) or 1
@@ -154,12 +183,13 @@ class Dashboard:
             threshold = np.percentile(np.abs(weights), 90)
             for i, j in zip(*np.where(np.abs(weights) >= threshold)):
                 strength = abs(weights[i, j]) / scale
-                base = _POSITIVE if weights[i, j] > 0 else _NEGATIVE
-                tint = tuple(int(_CARD[k] + (base[k] - _CARD[k]) * strength) for k in range(3))
-                pygame.draw.line(surface, tint, positions[source][i], positions[target][j], 1)
+                base = POSITIVE if weights[i, j] > 0 else NEGATIVE
+                pygame.draw.line(
+                    surface, tint(base, strength), positions[source][i], positions[target][j], 1
+                )
 
         for index, (_, _, column) in enumerate(topology.layers):
-            color = _ACCENT if column == 0 else _TEXT if column == columns else _MUTED
+            color = ACCENT if column == 0 else TEXT if column == columns else MUTED
             for x, y in positions[index]:
                 pygame.draw.circle(surface, color, (int(x), int(y)), 2)
         return surface
@@ -173,7 +203,7 @@ class Dashboard:
         architecture — including one whose weights mean nothing on their own.
         """
         surface = pygame.Surface(size)
-        surface.fill(_CARD)
+        surface.fill(CARD)
         width, height = size
         jacobian = response(brain, self.input_size)
         scale = max(1e-6, float(np.abs(jacobian).max()))
@@ -181,8 +211,7 @@ class Dashboard:
         left, right = 14, width - 22
         rays, gap = self.input_size - 1, 6  # every input but the last is a ray
         ray_ys = [gap + (height - 2 * gap - 14) * i / (rays - 1) for i in range(rays)]
-        speed_y = height - gap - 4
-        input_ys = ray_ys + [speed_y]
+        input_ys = ray_ys + [height - gap - 4]
         output_ys = [height * 0.34, height * 0.66]
 
         for i, y_in in enumerate(input_ys):
@@ -190,16 +219,14 @@ class Dashboard:
                 strength = abs(jacobian[i, j]) / scale
                 if strength < 0.12:  # everything faint at once is just noise
                     continue
-                base = _POSITIVE if jacobian[i, j] > 0 else _NEGATIVE
-                tint = tuple(int(_CARD[k] + (base[k] - _CARD[k]) * strength) for k in range(3))
-                pygame.draw.line(surface, tint, (left, y_in), (right, y_out), 1)
+                base = POSITIVE if jacobian[i, j] > 0 else NEGATIVE
+                pygame.draw.line(surface, tint(base, strength), (left, y_in), (right, y_out), 1)
 
         for i, y in enumerate(input_ys):
-            color = _ACCENT if i < rays else _MUTED
-            pygame.draw.circle(surface, color, (left, int(y)), 3)
+            pygame.draw.circle(surface, ACCENT if i < rays else MUTED, (left, int(y)), 3)
         for y, label in zip(output_ys, ("S", "T")):
-            pygame.draw.circle(surface, _TEXT, (right, int(y)), 3)
-            surface.blit(self.font_small.render(label, True, _MUTED), (right + 6, int(y) - 6))
+            pygame.draw.circle(surface, TEXT, (right, int(y)), 3)
+            surface.blit(self.font_small.render(label, True, MUTED), (right + 6, int(y) - 6))
         return surface
 
     def _draw_brain(self, brain: Brain, size: Tuple[int, int]) -> pygame.Surface:
@@ -224,12 +251,11 @@ class Dashboard:
                 self._broken.add(name)
                 logger.error("%s cannot be drawn: %s", name, exc)
             surface = pygame.Surface(size)
-            surface.fill(_CARD)
-            surface.blit(self.font_small.render("cannot be drawn", True, _MUTED), (12, 10))
+            surface.fill(CARD)
+            surface.blit(self.font_small.render("cannot be drawn", True, MUTED), (12, 10))
             return surface
 
     def _cached_diagram(self, brain: Brain, size: Tuple[int, int]) -> pygame.Surface:
-        """Draw the brain's own structure if it offers one, its response if not."""
         key = id(brain)
         cached = self._diagrams.get(key)
         if cached is None or cached.get_size() != size:
@@ -239,107 +265,108 @@ class Dashboard:
             self._diagrams[key] = cached
         return cached
 
-    def _entries(self, y: int, entries: Sequence[Entry], card_height: int) -> int:
-        """One card per entrant: standing on the left, its brain on the right."""
+    # -- the standings -------------------------------------------------------
+
+    def _card_height(self, room: int, count: int) -> int:
+        """Share the space between the cards, whatever is left after the stats."""
+        return int(np.clip(room / max(1, count) - 8, 46, 190))
+
+    def _entries(
+        self, y: int, entries: Sequence[Entry], card_height: int
+    ) -> int:
+        """One card per entrant: the standing, then its brain underneath.
+
+        The diagram sits below the text rather than beside it. Beside, it was
+        150 px wide against the 356 the card has, because the detail line ran
+        to x=196 and there was nothing to be done about it. Underneath it gets
+        the full width and whatever height the card has left, which with the
+        analyses moved out from under the cards is most of it.
+
+        Where a card is too short for a legible diagram it is dropped rather
+        than drawn as a smear.
+        """
         for entry in sorted(entries, key=lambda e: -e.laps):
-            top = self._card(y, card_height, "")
+            top = self._card(12, y, self.width - 24, card_height)
             pygame.draw.rect(
                 self.surface, entry.color, pygame.Rect(24, y + 9, 10, 10), border_radius=2
             )
             self._text(entry.name[:12], 42, y + 6, self.font)
-            self._text(f"{entry.laps:5.2f} laps", 42, top + 2, self.font, _ACCENT)
+            # The parameter count belongs next to the name: it is the one number
+            # that says what an entrant actually bet on, and the whole argument
+            # about budget turns on it.
+            self._text(f"{entry.params} par", self.width - 92, y + 8, self.font_small, MUTED)
+            self._text(f"{entry.laps:5.2f} laps", 42, top + 2, self.font, ACCENT)
             detail = f"best {entry.best:.2f}"
             if entry.shown:
                 detail += f"   {entry.alive}/{entry.shown} alive"
-            self._text(detail, 42, top + 20, self.font_small, _MUTED)
+            self._text(detail, 42, top + 20, self.font_small, MUTED)
 
-            if entry.brain is not None:
-                inner = (150, card_height - 16)
-                self.surface.blit(
-                    self._cached_diagram(entry.brain, inner),
-                    (self.width - inner[0] - 24, y + 8),
-                )
+            room = card_height - 70
+            if entry.brain is not None and room >= 24:
+                inner = (self.width - 48, room)
+                self.surface.blit(self._cached_diagram(entry.brain, inner), (24, y + 64))
             y += card_height + 8
         return y
 
-    def _chart(self, y: int, curves: Sequence[Curve]) -> None:
-        """Each entrant's progress, over the difficulty of the draw they shared.
+    def _stats(self, y: int, height: int, stats: Sequence[Tuple[str, str]]) -> None:
+        """Labelled numbers about the run itself.
 
-        The best score *of a generation* is not a progress curve. Every
-        generation runs on a fresh start point and a different island layout, so
-        even an elite carried over untouched scores differently from one to the
-        next — and all the entrants rise and fall together on it, which is the
-        signature of the shared draw rather than of anyone's search.
-
-        So the running maximum is drawn per entrant: monotonic, and the line
-        that answers "am I still improving, or am I on a plateau?". The raw
-        per-generation score is drawn once, in grey, because every entrant meets
-        the same draw and four copies of it would be four copies of one fact.
+        Not everything worth watching is a curve. What the mutation size is
+        *right now* is one number, and since it anneals it is a different number
+        every generation; how many evaluations have been spent is the quantity
+        the whole architecture argument turns on. Both are invisible in any
+        chart here, and both are one line of text.
         """
-        height = self.height - y - 14
-        if height < 60:
-            return
-        top = self._card(y, height, "BEST SO FAR")
-        tracked = [(c, h) for _, c, h in curves if len(h) >= 2]
-        longest = max((len(h) for _, h in tracked), default=0)
-        if longest < 2:
-            self._text("collecting...", 28, top + 14, self.font_small, _MUTED)
-            return
+        top = self._card(12, y, self.width - 24, height, "RUN")
+        for i, (label, value) in enumerate(stats):
+            row = top + 2 + i * 15
+            if row > y + height - 14:
+                return
+            self._text(label, 24, row, self.font_small, MUTED)
+            self._text(value, 132, row, self.font_small, TEXT)
 
-        # The legend and the scale go in the title row, which is otherwise dead
-        # space: an axis label below the plot would cost the plot its height,
-        # and height is the one thing this chart cannot spare.
-        self._text("grey: the draw", 130, top - 18, self.font_small, _MUTED)
-        plot = pygame.Rect(28, top + 4, self.width - 56, height - 46)
-        running = [np.maximum.accumulate(np.asarray(h, dtype=float)) for _, h in tracked]
-        peak = max(float(r[-1]) for r in running) or 1.0
-
-        def line(values: Sequence[float], color: Color, thickness: int):
-            points: List[Tuple[float, float]] = [
-                (
-                    plot.x + plot.width * i / (longest - 1),
-                    plot.bottom - plot.height * (float(value) / peak),
-                )
-                for i, value in enumerate(values)
-            ]
-            pygame.draw.lines(self.surface, color, False, points, thickness)
-            return points
-
-        shared = [
-            float(np.mean([h[i] for _, h in tracked if i < len(h)])) for i in range(longest)
-        ]
-        line(shared, _MUTED, 1)
-        for (color, _), values in zip(tracked, running):
-            pygame.draw.circle(self.surface, color, line(values, color, 2)[-1], 3)
-
-        self._text(f"{peak:.2f}", self.width - 96, top - 18, self.font_small, _MUTED)
-
-    def _card_height(self, count: int) -> int:
-        """Share the space between the cards and the chart.
-
-        With a few entrants each card is tall enough for a legible diagram; with
-        many, the cards give way first and the chart keeps a floor, because a
-        cramped diagram says less than a cramped curve.
-        """
-        available = self.height - 82 - 150  # header, then the chart's floor
-        return int(np.clip(available / max(1, count) - 8, 46, 92))
+    # -- assembly ------------------------------------------------------------
 
     def render(
         self,
         generation: int,
         track_name: str,
         track_number: int,
-        track_count: int,
+        circuits: Sequence[str],
         frame: int,
         max_frames: int,
         entries: Sequence[Entry],
-        curves: Sequence[Curve],
+        stats: Sequence[Tuple[str, str]] = (),
     ) -> pygame.Surface:
-        self.surface.fill(_BG)
-        y = self._header(generation, track_name, track_number, track_count, frame, max_frames)
-        y = self._entries(y + 2, entries, self._card_height(len(entries)))
-        self._chart(y + 2, curves)
+        """The panel: who is ahead, what they are, and where the run is.
+
+        The analyses are not here — they are on the strip under the circuit,
+        which is space the window was wasting. That is what lets these cards be
+        tall enough for a brain diagram anyone can actually read.
+        """
+        self.surface.fill(BG)
+        top = self._header(
+            generation, track_name, track_number, len(circuits), frame, max_frames
+        )
+        stats_height = min(_STATS_HEIGHT, self.height // 4) if stats else 0
+        room = self.height - top - 16 - (stats_height + 8 if stats_height else 0)
+        bottom = self._entries(top + 2, entries, self._card_height(room, len(entries)))
+        if stats_height:
+            self._stats(max(bottom + 2, self.height - stats_height - 12), stats_height, stats)
         return self.surface
 
 
-__all__ = ["Curve", "Dashboard", "Entry", "response"]
+__all__ = [
+    "ACCENT",
+    "BG",
+    "CARD",
+    "Dashboard",
+    "Entry",
+    "MUTED",
+    "NEGATIVE",
+    "POSITIVE",
+    "Series",
+    "TEXT",
+    "response",
+    "tint",
+]

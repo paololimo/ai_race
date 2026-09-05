@@ -190,6 +190,10 @@ class SimulationConfig:
     fps: int = 60
     seed: int = 42
     dashboard_width: int = 380
+    # A strip under the circuit for the analyses. It is space the window was
+    # wasting, and moving them off the panel is what leaves the standings cards
+    # tall enough to draw a brain in. Dropped on a display too short for it.
+    strip_height: int = 280
     checkpoint_dir: str = "outputs"
     # Everything a comparison rests on lives here and is shared by every
     # entrant. What an entrant brings is only its architecture, in one file

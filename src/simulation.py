@@ -11,6 +11,7 @@ things. Each squad breeds alone; only the conditions are shared.
 
 import json
 import logging
+import time
 import multiprocessing
 import multiprocessing.pool
 import os
@@ -27,14 +28,23 @@ from src import parallel
 from src.brains import BrainRef, Color, build_brain, color_of, entrants
 from src.car import Car, network_input_size
 from src.config import SimulationConfig, race_track, track_variants
-from src.dashboard import Dashboard, Entry
-from src.genetic import next_generation
-from src.renderer import Renderer
+from src.analysis import Analysis
+from src.dashboard import Dashboard, Entry, Series
+from src.genetic import mutation_sigma, next_generation
+from src.renderer import Renderer, fit_window
 from src.track import Track
 
 logger = logging.getLogger(__name__)
 
 Result = Tuple[str, float, bool, int]  # entrant, laps, still running, frames
+
+
+def _clock(seconds: float) -> str:
+    """`h:mm:ss` once it runs to hours, `m:ss` before that."""
+    seconds = int(max(0.0, seconds))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
 
 
 def set_seed(seed: int) -> None:
@@ -54,6 +64,15 @@ class Squad:
     genomes: List[np.ndarray]
     rng: np.random.Generator
     history: List[float] = field(default_factory=list)
+    # Mean per-gene standard deviation of the population, one value per
+    # generation. The diagnostic a genetic algorithm cannot be read without:
+    # once it reaches zero the population is one genome in many copies and no
+    # number of further generations buys anything.
+    spread: List[float] = field(default_factory=list)
+    # Best score on each circuit this generation. Fitness is `worst + 0.35 x
+    # mean`, so the lowest of these is what is actually holding the entrant
+    # back — and it was being aggregated away before anyone could see it.
+    circuits: List[float] = field(default_factory=list)
     best_fitness: float = 0.0
     best_genome: Optional[np.ndarray] = None
 
@@ -113,10 +132,19 @@ class Simulation:
         # for the twelve tracks it is not going to use.
         first = track_variants()[0]
         size = (first.width, first.height)
-        self.renderer = Renderer(size, cfg.dashboard_width, cfg.fps) if render else None
-        self.dashboard = (
-            Dashboard(cfg.dashboard_width, size[1], self.input_size) if render else None
+        # The window is asked for more than a small screen has, and shrinks to
+        # what this display actually offers rather than running off the edge.
+        panel, strip = (
+            fit_window(size, cfg.dashboard_width, cfg.strip_height)
+            if render
+            else (cfg.dashboard_width, cfg.strip_height)
         )
+        self.renderer = Renderer(size, panel, cfg.fps, strip) if render else None
+        self.dashboard = (
+            Dashboard(panel, size[1] + strip, self.input_size) if render else None
+        )
+        self.analysis = Analysis(size[0], strip) if render and strip else None
+        self._started = time.monotonic()
         grid = list(entries) if entries is not None else [BrainRef(n) for n in entrants()]
         self.squads: List[Squad] = [self._recruit(ref) for ref in grid]
         if not self.squads:
@@ -252,21 +280,48 @@ class Simulation:
                     alive=sum(1 for c in mine if c.alive),
                     shown=len(mine),
                     best=squad.best_fitness,
+                    params=len(squad.genomes[0]) if squad.genomes else 0,
                     brain=leader.brain if leader else None,
                 )
             )
-        self.renderer.present(
-            self.dashboard.render(
-                generation=generation,
-                track_name=stage.track.cfg.name,
-                track_number=stage.number + 1,
-                track_count=len(track_variants()),
-                frame=frame,
-                max_frames=stage.budget,
-                entries=entries,
-                curves=[(s.name, s.color, s.history) for s in self.squads],
-            )
+        circuits = [c.name for c in track_variants()]
+        series = [
+            Series(s.name, s.color, s.history, s.spread, s.circuits) for s in self.squads
+        ]
+        panel = self.dashboard.render(
+            generation=generation,
+            track_name=stage.track.cfg.name,
+            track_number=stage.number + 1,
+            circuits=circuits,
+            frame=frame,
+            max_frames=stage.budget,
+            entries=entries,
+            stats=self._stats(generation),
         )
+        strip = self.analysis.render(series, circuits) if self.analysis else None
+        self.renderer.present(panel, strip)
+
+    def _stats(self, generation: int) -> List[Tuple[str, str]]:
+        """Numbers about the run that no curve here shows.
+
+        The mutation size is a different number every generation now that it
+        anneals, and it is the single knob that decides whether late
+        generations can refine anything. The evaluation count is the quantity
+        the whole argument about how many parameters an entrant can afford
+        turns on. Neither is visible in any chart, and both are one line.
+        """
+        total = max(1, self.cfg.generations)
+        progress = (generation - 1) / max(1, total - 1)
+        elapsed = time.monotonic() - self._started
+        done = max(0, generation - 1) * self.cfg.genetic.population_size
+        remaining = elapsed / generation * (total - generation) if generation else 0.0
+        return [
+            ("generation", f"{generation} / {total}"),
+            ("mutation", f"{mutation_sigma(self.cfg.genetic, progress):.3f}"),
+            ("evaluated", f"{done * len(self.squads):,}".replace(",", " ")),
+            ("elapsed", _clock(elapsed)),
+            ("remaining", _clock(remaining) if generation > 1 else "--:--"),
+        ]
 
     def _evaluate(self, stage: Stage, generation: int) -> Tuple[Dict[int, List[float]], bool]:
         """Score every entrant's full population under one set of conditions."""
@@ -334,6 +389,10 @@ class Simulation:
                     squad.best_fitness = float(totals[best])
                     squad.best_genome = squad.genomes[best]
                 squad.history.append(float(totals[best]))
+                # Measured on the population that was just scored, before
+                # breeding replaces it.
+                squad.spread.append(float(np.std(np.asarray(squad.genomes), axis=0).mean()))
+                squad.circuits = [float(np.max(scores)) for scores in per_track[i]]
                 squad.genomes = next_generation(
                     squad.genomes, list(totals), self.cfg.genetic, squad.rng, progress
                 )

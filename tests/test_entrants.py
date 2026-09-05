@@ -119,6 +119,55 @@ def test_populations_never_mix(tmp_path) -> None:
     assert [{g.size for g in s.genomes} for s in simulation.squads] == before
 
 
+def test_the_run_records_what_the_analyses_need(tmp_path) -> None:
+    """Genetic spread and the per-circuit scores are collected, not derived.
+
+    Both were being thrown away: the population's spread was never computed at
+    all, and the per-circuit scores were aggregated into one fitness before
+    anything could look at them. A run that stops recording either leaves the
+    strip under the circuit blank, which is silent — hence this.
+    """
+    simulation = Simulation(config(tmp_path), render=False)
+    simulation.train()
+
+    for squad in simulation.squads:
+        assert len(squad.spread) == 2, f"{squad.name} recorded no spread"
+        assert all(v > 0 for v in squad.spread)
+        # One score per circuit, and they must not all be the same number: the
+        # circuits pose different problems, which is the point of having three.
+        assert len(squad.circuits) == len(simulation.circuits)
+        assert len(set(squad.circuits)) > 1
+
+
+def test_the_window_shrinks_to_the_display_rather_than_overflowing_it() -> None:
+    """A panel and a strip that do not fit are trimmed, not drawn off-screen.
+
+    The window asks for 1380 x 980 around a 1000 x 700 circuit, which is more
+    than a 1440 x 900 laptop has. Getting this wrong puts the standings or the
+    analyses past the edge of the screen, where nothing reports them missing.
+    """
+    from src.renderer import fit_window
+
+    track = (1000, 700)
+    assert fit_window(track, 380, 280, screen=(2560, 1440)) == (380, 280)
+
+    # A 1440 x 900 laptop: the panel still fits, the strip does not, and half a
+    # strip is worse than none.
+    panel, strip = fit_window(track, 380, 280, screen=(1440, 900))
+    assert panel == 380 and strip == 0
+
+    # Tall enough for some strip, but not all of it: it is trimmed, not dropped.
+    panel, strip = fit_window(track, 380, 280, screen=(1440, 1050))
+    assert panel == 380 and 150 <= strip < 280
+
+    # Narrow: the panel is trimmed rather than pushing the circuit off the edge.
+    panel, _ = fit_window(track, 380, 280, screen=(1400, 1440))
+    assert panel < 380
+
+    # No display to ask (a dummy driver reports nonsense): take the request.
+    assert fit_window(track, 380, 280, screen=(0, 0)) == (380, 280)
+
+
 def test_discovery_order_cannot_change_a_result(tmp_path) -> None:
     """Each entrant draws from its own stream, so listing order is irrelevant."""
     simulation = Simulation(config(tmp_path), render=False)
@@ -223,7 +272,8 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
     """
     import pygame
 
-    from src.dashboard import Dashboard, Entry
+    from src.analysis import Analysis
+    from src.dashboard import Dashboard, Entry, Series
 
     pygame.init()
     described, measured = 0, 0
@@ -241,14 +291,24 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
             described += 1
         else:
             measured += 1
-        entries.append(Entry(name, color_of(name), 0.5, 1, 8, 1.0, brain))
+        entries.append(Entry(name, color_of(name), 0.5, 1, 8, 1.0, brain.genome_size, brain))
 
     assert described + measured == len(entrants())
-    panel = Dashboard(380, 700, INPUTS).render(
-        generation=1, track_name="serpentine", track_number=1, track_count=3,
-        frame=1, max_frames=100, entries=entries, curves=[(e.name, e.color, [0.1, 0.2]) for e in entries],
+    circuits = ["serpentine", "grid-city", "speedway"]
+    panel = Dashboard(380, 980, INPUTS).render(
+        generation=1, track_name="serpentine", track_number=1, circuits=circuits,
+        frame=1, max_frames=100, entries=entries,
+        stats=[("generation", "1 / 120"), ("mutation", "0.300")],
     )
-    assert panel.get_size() == (380, 700)
+    assert panel.get_size() == (380, 980)
+
+    # And the strip, which is where the analyses live: it must survive being
+    # handed one generation of history, which is what it gets on the first frame.
+    strip = Analysis(1000, 280).render(
+        [Series(e.name, e.color, [0.1, 0.2], [0.3, 0.28], [0.4, 0.5, 0.6]) for e in entries],
+        circuits,
+    )
+    assert strip.get_size() == (1000, 280)
 
 
 def test_response_reads_a_brain_without_touching_its_weights() -> None:
@@ -306,9 +366,10 @@ def test_a_brain_that_cannot_be_drawn_does_not_take_the_window_down() -> None:
             pass
 
     panel = Dashboard(380, 700, INPUTS)
-    entries = [Entry("wreck", (200, 0, 0), 0.0, 1, 1, 0.0, Exploding())]
+    entries = [Entry("wreck", (200, 0, 0), 0.0, 1, 1, 0.0, 1, Exploding())]
     surface = panel.render(
-        generation=1, track_name="serpentine", track_number=1, track_count=3,
-        frame=1, max_frames=100, entries=entries, curves=[("wreck", (200, 0, 0), [0.1, 0.2])],
+        generation=1, track_name="serpentine", track_number=1,
+        circuits=["serpentine", "grid-city", "speedway"],
+        frame=1, max_frames=100, entries=entries,
     )
     assert surface.get_size() == (380, 700)
