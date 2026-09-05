@@ -27,7 +27,7 @@ from src import parallel
 from src.brains import BrainRef, Color, build_brain, color_of, entrants
 from src.car import Car, network_input_size
 from src.config import SimulationConfig, race_track
-from src.dashboard import Dashboard
+from src.dashboard import Dashboard, Entry
 from src.genetic import next_generation
 from src.renderer import Renderer
 from src.track import Track
@@ -223,18 +223,28 @@ class Simulation:
 
     def _draw(self, cars: Sequence[Car], stage: Stage, generation: int, frame: int) -> None:
         assert self.renderer is not None
-        self.renderer.draw_track(stage.track, cars, [self._owner[id(c)].color for c in cars])
-        standings = []
+        self.renderer.draw_track(
+            stage.track,
+            cars,
+            [self._owner[id(c)].color for c in cars],
+            start_index=stage.start or 0,
+        )
+        entries = []
         for squad in self.squads:
             mine = [c for c in cars if self._owner[id(c)] is squad]
-            standings.append(
-                (
-                    squad.name,
-                    squad.color,
-                    max((c.laps for c in mine), default=0.0),
-                    sum(1 for c in mine if c.alive),
-                    len(mine),
-                    squad.best_fitness,
+            # The panel draws this squad's leader, so the diagram is of a brain
+            # actually on the track rather than of last generation's champion.
+            leader = max((c for c in mine if c.alive), key=lambda c: c.fitness, default=None)
+            leader = leader or (mine[0] if mine else None)
+            entries.append(
+                Entry(
+                    name=squad.name,
+                    color=squad.color,
+                    laps=max((c.laps for c in mine), default=0.0),
+                    alive=sum(1 for c in mine if c.alive),
+                    shown=len(mine),
+                    best=squad.best_fitness,
+                    brain=leader.brain if leader else None,
                 )
             )
         self.renderer.present(
@@ -245,7 +255,7 @@ class Simulation:
                 track_count=len(self.circuits),
                 frame=frame,
                 max_frames=stage.budget,
-                standings=standings,
+                entries=entries,
                 curves=[(s.name, s.color, s.history) for s in self.squads],
             )
         )

@@ -10,7 +10,7 @@ from typing import Any, List, Mapping, Tuple
 
 import numpy as np
 
-from src.brains import register_brain
+from src.brains import Topology, register_brain
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,17 @@ class NeuralNetwork:
         reflected = self._pass(mirrored)
         return np.array(
             [(direct[0] - reflected[0]) / 2.0, (direct[1] + reflected[1]) / 2.0]
+        )
+
+    def describe(self) -> Topology:
+        """The dense chain, for the panel: one column per layer, edges between."""
+        labels = ["sensors"] + ["hidden"] * (len(self.layer_sizes) - 2) + ["drive"]
+        return Topology(
+            layers=tuple(
+                (label, size, column)
+                for column, (label, size) in enumerate(zip(labels, self.layer_sizes))
+            ),
+            edges=tuple((i, i + 1, weight) for i, weight in enumerate(self.weights)),
         )
 
     @property

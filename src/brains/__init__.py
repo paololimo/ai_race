@@ -67,6 +67,31 @@ class Brain(Protocol):
         """Load a vector produced by `get_genome` back into the brain."""
         ...
 
+    # Optional, and not part of the protocol: `describe(self) -> Topology`.
+    # Implement it and the dashboard draws your real structure — nodes, layers
+    # and edges tinted by weight. Leave it out and it draws your measured
+    # response instead. Either way nothing about the race changes.
+
+
+@dataclass(frozen=True)
+class Topology:
+    """What an entrant optionally tells the panel about its own shape.
+
+    There is no way to work this out from outside: one entrant is a dense chain,
+    another two parallel streams with skips, another a projection onto a
+    symmetry basis. So a brain that wants to be drawn describes itself, and one
+    that does not is drawn by its measured input-to-output response instead.
+
+    `layers` are `(label, node count, column)` — the column places them left to
+    right, and two layers may share one, which is how parallel streams are
+    drawn. `edges` are `(from layer, to layer, weight matrix)` with the matrix
+    shaped `(nodes in from, nodes in to)`; a skip is simply an edge between
+    non-adjacent columns.
+    """
+
+    layers: Tuple[Tuple[str, int, int], ...]
+    edges: Tuple[Tuple[int, int, Any], ...]
+
 
 @dataclass(frozen=True)
 class BrainRef:
@@ -158,6 +183,7 @@ def build_brain(ref: BrainRef, input_size: int, rng: np.random.Generator) -> Bra
 __all__ = [
     "BRAIN_FACTORY",
     "Brain",
+    "Topology",
     "BrainFactory",
     "BrainRef",
     "Color",

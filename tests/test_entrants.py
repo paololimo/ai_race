@@ -178,3 +178,66 @@ def test_one_class_cannot_take_two_places_on_the_grid() -> None:
         assert BRAIN_FACTORY["twin-a"] is Twin
     finally:
         BRAIN_FACTORY.pop("twin-a", None)
+
+
+def test_the_panel_draws_every_entrant(tmp_path) -> None:
+    """Structure when a brain describes itself, measured response when not.
+
+    The old panel read `layer_sizes` and `weights` straight off the brain, which
+    only the project's own entrant has — every competitor took the window down
+    on the first frame it led.
+    """
+    import pygame
+
+    from src.dashboard import Dashboard, Entry
+
+    pygame.init()
+    described, measured = 0, 0
+    rng = np.random.default_rng(0)
+    entries = []
+    for name in entrants():
+        brain = build_brain(BrainRef(name), INPUTS, rng)
+        if callable(getattr(brain, "describe", None)):
+            topology = brain.describe()
+            assert topology.layers, f"{name} described no layers"
+            for source, target, weights in topology.edges:
+                rows, cols = np.asarray(weights).shape
+                assert rows == topology.layers[source][1], f"{name}: edge misses its source"
+                assert cols == topology.layers[target][1], f"{name}: edge misses its target"
+            described += 1
+        else:
+            measured += 1
+        entries.append(Entry(name, color_of(name), 0.5, 1, 8, 1.0, brain))
+
+    assert described + measured == len(entrants())
+    panel = Dashboard(380, 700).render(
+        generation=1, track_name="serpentine", track_number=1, track_count=3,
+        frame=1, max_frames=100, entries=entries, curves=[(e.name, e.color, [0.1, 0.2]) for e in entries],
+    )
+    assert panel.get_size() == (380, 700)
+
+
+def test_response_reads_a_brain_without_touching_its_weights() -> None:
+    """The fallback view must work on any architecture, including opaque ones."""
+    from src.dashboard import response
+
+    class Opaque:
+        genome_size = 2
+
+        def __init__(self):
+            self.g = np.array([0.7, -0.4])
+
+        def forward(self, inputs):
+            return np.tanh(np.array([self.g[0] * inputs[0], self.g[1] * inputs[3]]))
+
+        def get_genome(self):
+            return self.g
+
+        def set_genome(self, genome):
+            self.g = genome
+
+    jacobian = response(Opaque(), INPUTS)
+    assert jacobian.shape == (INPUTS, 2)
+    assert jacobian[0, 0] > 0, "should see the positive dependence on ray 0"
+    assert jacobian[3, 1] < 0, "should see the negative dependence on ray 3"
+    assert abs(jacobian[5, 0]) < 1e-9, "should see no dependence where there is none"
