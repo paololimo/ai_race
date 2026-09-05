@@ -17,16 +17,16 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from src.brains import BrainRef, build_brain
 from src.car import Car, network_input_size
-from src.config import NetworkConfig, SimulationConfig, track_variants
-from src.neural_network import NeuralNetwork
+from src.config import SimulationConfig, track_variants
 from src.track import Track
 
 # Per-process state: circuits are expensive to build, so each worker builds them
 # once and keeps them for the life of the pool.
 _STATE: Dict[str, object] = {}
 
-Job = Tuple[int, int, Optional[int], int, List[np.ndarray], Optional[NetworkConfig]]
+Job = Tuple[int, int, Optional[int], int, List[np.ndarray], BrainRef]
 
 
 def build_circuits(cfg: SimulationConfig) -> List[List[Track]]:
@@ -64,7 +64,7 @@ def worker_init(cfg: SimulationConfig) -> None:
 
 def evaluate(job: Job) -> Tuple[int, List[float]]:
     """Drive one block of genomes on one circuit; return their lap scores."""
-    chunk_id, track_number, variant, start_index, genomes, network = job
+    chunk_id, track_number, variant, start_index, genomes, brain = job
     cfg: SimulationConfig = _STATE["cfg"]  # type: ignore[assignment]
     circuits: Sequence[Sequence[Track]] = _STATE["circuits"]  # type: ignore[assignment]
     rng: np.random.Generator = _STATE["rng"]  # type: ignore[assignment]
@@ -75,9 +75,9 @@ def evaluate(job: Job) -> Tuple[int, List[float]]:
 
     cars = []
     for genome in genomes:
-        brain = NeuralNetwork(inputs, network or cfg.network, rng)
-        brain.set_genome(genome)
-        cars.append(Car(track, brain, cfg.car, start_index))
+        driver = build_brain(brain, inputs, rng)
+        driver.set_genome(genome)
+        cars.append(Car(track, driver, cfg.car, start_index))
 
     for _ in range(budget):
         for car in cars:

@@ -1,5 +1,6 @@
 """Evolutionary self-driving car project."""
 
+from src.brains import Brain, BrainFactory, BrainRef, build_brain, register_brain
 from src.car import Car
 from src.config import SimulationConfig, race_track, track_variants
 from src.genetic import crossover, mutate, next_generation
@@ -10,6 +11,9 @@ from src.track import Track
 from src.track_check import TrackReport, check_track
 
 __all__ = [
+    "Brain",
+    "BrainFactory",
+    "BrainRef",
     "Car",
     "Track",
     "ObstacleField",
@@ -18,9 +22,11 @@ __all__ = [
     "SimulationConfig",
     "TrackReport",
     "check_track",
+    "build_brain",
     "crossover",
     "mutate",
     "next_generation",
     "race_track",
+    "register_brain",
     "track_variants",
 ]

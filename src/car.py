@@ -5,8 +5,8 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+from src.brains import Brain
 from src.config import CarConfig
-from src.neural_network import NeuralNetwork
 from src.track import Track
 
 _HIT_THRESHOLD = 1.0  # clearance at or below this counts as the verge
@@ -29,7 +29,7 @@ class Car:
     def __init__(
         self,
         track: Track,
-        brain: NeuralNetwork,
+        brain: Brain,
         cfg: CarConfig,
         start_index: Optional[int] = None,
     ) -> None:

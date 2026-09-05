@@ -1,13 +1,15 @@
 """Train a population on the three training circuits.
 
 The best genome of the run is written to `outputs/best_genome.npz`, which is
-what `race.py` then takes to the circuit it has never seen.
+what `race.py` then takes to the circuit it has never seen. `--brain` selects
+which registered architecture to evolve; everything else the comparison rests
+on is fixed here.
 """
 
 import argparse
 import os
 
-from src.cli import add_common_arguments, build_config, setup_logging
+from src.cli import add_brain_arguments, add_common_arguments, build_config, setup_logging
 from src.simulation import Simulation
 
 
@@ -21,6 +23,7 @@ def parse_args() -> argparse.Namespace:
         default=max(1, (os.cpu_count() or 2) - 2),
         help="parallel processes for --headless runs (default: cores - 2)",
     )
+    add_brain_arguments(parser)
     add_common_arguments(parser)
     return parser.parse_args()
 

@@ -12,6 +12,8 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 import pygame
 
+from src.brains import Brain, BrainRef, build_brain
+from src.brains.baseline import spec_from_config
 from src.car import Car, network_input_size
 from src.config import NetworkConfig, SimulationConfig, race_track, track_variants
 from src.dashboard import Dashboard
@@ -99,11 +101,22 @@ class Simulation:
             built.append(Track(replace(cfg, islands=shifted)))
         return built
 
+    def brain_ref(self, override: Optional[BrainRef] = None) -> BrainRef:
+        """The brain this run drives with.
+
+        `cfg.brain` names it; an empty spec on the baseline means "use
+        `cfg.network`", which is what the architecture ablation varies.
+        """
+        ref = override or self.cfg.brain
+        if ref.name == "baseline" and not ref.spec:
+            return BrainRef("baseline", spec_from_config(self.cfg.network))
+        return ref
+
     def _new_car(
         self,
         track: Track,
         genome: np.ndarray,
-        network: Optional[NetworkConfig] = None,
+        brain: Optional[BrainRef] = None,
         start_index: Optional[int] = None,
     ) -> Car:
         # A dedicated generator, not the run's own: building a network draws
@@ -112,23 +125,23 @@ class Simulation:
         # it, and then the start points and the mutations that follow would
         # differ depending on how many cars happened to be built. That is what
         # made parallel runs diverge from serial ones.
-        brain = NeuralNetwork(self.input_size, network or self.cfg.network, self._brain_rng)
-        brain.set_genome(genome)
-        return Car(track, brain, self.cfg.car, start_index)
+        driver = build_brain(self.brain_ref(brain), self.input_size, self._brain_rng)
+        driver.set_genome(genome)
+        return Car(track, driver, self.cfg.car, start_index)
 
     def _random_genomes(self) -> List[np.ndarray]:
-        blank = NeuralNetwork(self.input_size, self.cfg.network, self.rng)
-        genomes = [blank.get_genome()]
-        for _ in range(self.cfg.genetic.population_size - 1):
-            genomes.append(NeuralNetwork(self.input_size, self.cfg.network, self.rng).get_genome())
-        return genomes
+        ref = self.brain_ref()
+        return [
+            build_brain(ref, self.input_size, self.rng).get_genome()
+            for _ in range(self.cfg.genetic.population_size)
+        ]
 
     def run_on_track(
         self,
         genomes: Sequence[np.ndarray],
         track_number: int,
         generation: int,
-        network: Optional[NetworkConfig] = None,
+        brain: Optional[BrainRef] = None,
     ) -> Tuple[List[float], bool]:
         """Race every genome on one circuit; return their scores."""
         variants = self.circuits[track_number] if track_number < len(self.circuits) else None
@@ -146,7 +159,7 @@ class Simulation:
         if pool is not None:
             blocks = parallel.split(genomes, self.workers)
             jobs = [
-                (i, track_number, variant_index, start, block, network)
+                (i, track_number, variant_index, start, block, self.brain_ref(brain))
                 for i, block in enumerate(blocks)
             ]
             results = dict(pool.map(parallel.evaluate, jobs))
@@ -155,7 +168,7 @@ class Simulation:
                 scores.extend(results[i])
             return scores, True
 
-        cars = [self._new_car(track, g, network, start) for g in genomes]
+        cars = [self._new_car(track, g, brain, start) for g in genomes]
         budget = self.frame_budget(track)
 
         for frame in range(budget):
@@ -278,7 +291,7 @@ class Simulation:
         logger.info("Saved best genome (fitness %.1f) to %s", self.best_fitness, path)
         return path
 
-    def _load_genome(self, genome_path: Path) -> Tuple[np.ndarray, NetworkConfig]:
+    def _load_genome(self, genome_path: Path) -> Tuple[np.ndarray, BrainRef]:
         """Load a saved model, rebuilding the architecture it was trained with.
 
         The checkpoint carries its own layer sizes, so a model stays usable
@@ -299,20 +312,20 @@ class Simulation:
         if hidden and hidden != self.cfg.network.hidden_sizes:
             logger.info("Model architecture %s differs from the current default %s — using the model's.",
                         hidden, self.cfg.network.hidden_sizes)
-        return data["genome"], network
+        return data["genome"], BrainRef("baseline", spec_from_config(network))
 
     def replay_best(self, genome_path: Path, track_number: int = 0) -> None:
         """Watch a saved genome drive one training circuit on its own."""
-        genome, network = self._load_genome(genome_path)
-        self.run_on_track([genome], track_number, self.cfg.generations, network)
+        genome, ref = self._load_genome(genome_path)
+        self.run_on_track([genome], track_number, self.cfg.generations, ref)
         pygame.quit()
 
     def race(self, genome_path: Path) -> None:
         """Run the saved genome on the race circuit, which it never trained on."""
-        genome, network = self._load_genome(genome_path)
+        genome, ref = self._load_genome(genome_path)
         self.tracks = [Track(race_track())]
         self.circuits = []  # no rotation, no random start: the race is one fixed test
         logger.info("Final race on '%s' - a circuit never seen in training", self.tracks[0].cfg.name)
-        scores, _ = self.run_on_track([genome], 0, self.cfg.generations, network)
+        scores, _ = self.run_on_track([genome], 0, self.cfg.generations, ref)
         logger.info("Race result: %.2f laps of '%s'", scores[0], self.tracks[0].cfg.name)
         pygame.quit()

@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import Tuple
 
+from src.brains import BrainRef
+
 
 # One asphalt tone across every circuit: only the surroundings change colour.
 _ASPHALT = (44, 44, 52)
@@ -222,6 +224,11 @@ class SimulationConfig:
     obstacle_start_generation: int = 30
     dashboard_width: int = 380
     checkpoint_dir: str = "outputs"
+    # Which brain drives, and who built it. The brain is the *only* thing a
+    # competing agent supplies: circuits, physics, sensors, fitness, genetic
+    # algorithm and seed are fixed here, so a race compares architectures and
+    # nothing else. An empty spec on the baseline means "use `network` below".
+    brain: BrainRef = field(default_factory=BrainRef)
     track: TrackConfig = field(default_factory=TrackConfig)
     obstacles: ObstacleConfig = field(default_factory=ObstacleConfig)
     car: CarConfig = field(default_factory=CarConfig)

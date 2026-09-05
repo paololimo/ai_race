@@ -172,8 +172,9 @@ def test_saved_model_carries_its_own_architecture(tmp_path) -> None:
 
     # A fresh simulation on the default architecture must still load it.
     loader = Simulation(cfg, render=False)
-    genome, network = loader._load_genome(path)
-    assert network.hidden_sizes == (9, 7)
+    genome, ref = loader._load_genome(path)
+    assert ref.name == "baseline"
+    assert tuple(ref.spec["hidden_sizes"]) == (9, 7)
     assert genome.size == brain.genome_size
 
 

@@ -32,6 +32,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.brains import BrainRef  # noqa: E402
+from src.brains.baseline import spec_from_config  # noqa: E402
 from src.config import NetworkConfig, SimulationConfig, race_track  # noqa: E402
 from src.neural_network import NeuralNetwork  # noqa: E402
 from src.simulation import Simulation  # noqa: E402
@@ -68,7 +70,8 @@ def parameter_count(variant: Variant, cfg: SimulationConfig, inputs: int) -> int
 def race_score(simulation: Simulation, genome: np.ndarray, network: NetworkConfig) -> float:
     """Laps on the circuit the genome never trained on."""
     simulation.tracks = [Track(race_track())]
-    scores, _ = simulation.run_on_track([genome], 0, simulation.cfg.generations, network)
+    ref = BrainRef("baseline", spec_from_config(network))
+    scores, _ = simulation.run_on_track([genome], 0, simulation.cfg.generations, ref)
     return scores[0]
 
 
