@@ -151,7 +151,13 @@ class GeneticConfig:
     elite_count: int = 4
     breeding_fraction: float = 0.3
     mutation_rate: float = 0.05
+    # Mutation size, annealed geometrically from the first value to the second
+    # across the run. It was a single fixed 0.3, against a typical weight of
+    # 0.27 — so a mutated gene was not perturbed but effectively redrawn, and
+    # it stayed that violent at generation 120 as at generation 1. Late
+    # refinement was impossible: only the untouched elites carried progress.
     mutation_scale: float = 0.3
+    mutation_scale_final: float = 0.03
     # "uniform", "one-point", "two-point" or "none". Shared by every entrant, so
     # changing it changes the experiment for all of them equally and advantages
     # nobody. See `genetic.crossover` for what each costs a neural genome.

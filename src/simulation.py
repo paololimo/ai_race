@@ -310,6 +310,10 @@ class Simulation:
 
     def train(self) -> None:
         for generation in range(1, self.cfg.generations + 1):
+            # How far through the run we are, which is what the mutation size is
+            # annealed against. Shared by every squad, like everything else the
+            # comparison rests on.
+            progress = (generation - 1) / max(1, self.cfg.generations - 1)
             per_track: Dict[int, List[List[float]]] = {i: [] for i in range(len(self.squads))}
             for number in range(len(self.circuits)):
                 stage = self._stage(number, generation)
@@ -331,7 +335,7 @@ class Simulation:
                     squad.best_genome = squad.genomes[best]
                 squad.history.append(float(totals[best]))
                 squad.genomes = next_generation(
-                    squad.genomes, list(totals), self.cfg.genetic, squad.rng
+                    squad.genomes, list(totals), self.cfg.genetic, squad.rng, progress
                 )
 
             logger.info(
