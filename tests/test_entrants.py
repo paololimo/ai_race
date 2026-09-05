@@ -275,3 +275,40 @@ def test_response_reads_a_brain_without_touching_its_weights() -> None:
     assert jacobian[0, 0] > 0, "should see the positive dependence on ray 0"
     assert jacobian[3, 1] < 0, "should see the negative dependence on ray 3"
     assert abs(jacobian[5, 0]) < 1e-9, "should see no dependence where there is none"
+
+
+def test_a_brain_that_cannot_be_drawn_does_not_take_the_window_down() -> None:
+    """`describe()` is competitor code, so the panel must survive it raising.
+
+    The registry already refuses to let a file that fails to import cost anyone
+    the race; a panel that dies on the frame that entrant happens to lead is the
+    same failure arriving later, and mid-run.
+    """
+    import pygame
+
+    from src.dashboard import Dashboard, Entry
+
+    pygame.init()
+
+    class Exploding:
+        genome_size = 1
+
+        def describe(self):
+            raise RuntimeError("boom")
+
+        def forward(self, inputs):
+            raise RuntimeError("boom")
+
+        def get_genome(self):
+            return np.zeros(1)
+
+        def set_genome(self, genome):
+            pass
+
+    panel = Dashboard(380, 700, INPUTS)
+    entries = [Entry("wreck", (200, 0, 0), 0.0, 1, 1, 0.0, Exploding())]
+    surface = panel.render(
+        generation=1, track_name="serpentine", track_number=1, track_count=3,
+        frame=1, max_frames=100, entries=entries, curves=[("wreck", (200, 0, 0), [0.1, 0.2])],
+    )
+    assert surface.get_size() == (380, 700)

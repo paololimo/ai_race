@@ -29,7 +29,6 @@ src/
 ├── genetic.py          # selection, uniform crossover, mutation, elitism
 ├── track.py            # procedural circuit generation + drivable mask
 ├── track_check.py      # geometric validation of a generated circuit
-├── obstacles.py        # traffic lights and pedestrians: working, not wired in
 ├── car.py              # physics, 7 ray sensors, braking, fitness
 ├── renderer.py         # window: circuit on the left, panel on the right
 ├── dashboard.py        # panel: standings and a fitness curve per entrant
@@ -41,7 +40,6 @@ race.py                 # take every champion to the unseen circuit
 tests/
 ├── test_core.py        # network, genetic operators, track, car
 ├── test_entrants.py    # the race harness: discovery, contract, parity
-├── test_obstacles.py   # moving-hazard module, in isolation
 └── test_tracks.py      # geometric validity of every circuit
 experiments/
 └── ablation.py         # architecture comparison across seeds
@@ -219,18 +217,20 @@ physics never modelled it — so they are spaced 26 px apart on the grid purely 
 stay visible; distance is measured from each car's own start, so the stagger
 costs nobody progress, but it does mean they meet each corner a few frames apart.
 
-## Moving hazards (not active)
+## Moving hazards, and why there are none
 
-`obstacles.py` implements timed traffic lights and crossing pedestrians, with
-analytic ray-circle intersection. They are no longer wired into the simulation
-but the module stays covered by tests: raise `num_traffic_lights` /
-`num_pedestrians` in `ObstacleConfig` to bring them back.
+Timed traffic lights and crossing pedestrians were built, measured and removed.
+Traffic lights made waiting at a red barrier dominate the run time, so most of
+each evaluation was spent stationary. Pedestrians proved unlearnable for a
+memoryless network: seeing only instantaneous distance, it cannot tell one
+walking into its path from one standing still — seven of eight race attempts
+ended in a pedestrian collision, with zero off-track deaths.
 
-Both were removed for measured reasons. Traffic lights made waiting at a red
-barrier dominate run time. Pedestrians proved unlearnable for a memoryless
-network: seeing only instantaneous distance, it cannot tell one walking into its
-path from one standing still — seven of eight race attempts ended in a
-pedestrian collision, with zero off-track deaths.
+The hazards the cars do face are static: islands cut into the carriageway, which
+the ray sensors see as walls for free. The implementation of the moving ones sat
+unreachable behind a config flag for a long time; it is in the history rather
+than in the tree — `git log -- src/obstacles.py` — because a module no code path
+can reach is not a feature, it is a claim the tests can no longer check.
 
 ## Differences from the original project
 

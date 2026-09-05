@@ -4,13 +4,16 @@ The layout is derived from how many entrants there are, so adding a file to
 `src/brains/` adds a card and a curve with no change here.
 """
 
+import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import pygame
 
 from src.brains import Brain, Color
+
+logger = logging.getLogger(__name__)
 
 _BG = (18, 20, 32)
 _CARD = (28, 31, 48)
@@ -79,6 +82,7 @@ class Dashboard:
         # when a squad's leader changes — a few times per evaluation, not sixty
         # times a second.
         self._diagrams: Dict[int, pygame.Surface] = {}
+        self._broken: Set[str] = set()  # named once, not once a frame
 
     def _text(self, text: str, x: int, y: int, font: pygame.font.Font, color=_TEXT) -> None:
         self.surface.blit(font.render(text, True, color), (x, y))
@@ -198,6 +202,32 @@ class Dashboard:
             surface.blit(self.font_small.render(label, True, _MUTED), (right + 6, int(y) - 6))
         return surface
 
+    def _draw_brain(self, brain: Brain, size: Tuple[int, int]) -> pygame.Surface:
+        """This brain's structure if it offers one, its measured response if not.
+
+        Both calls run competitor code — `describe()` is written by the entrant,
+        and `forward` is too — so both are guarded. The registry already refuses
+        to let a file that raises on import take the race down with it; a panel
+        that takes the window down on the frame that entrant happens to lead
+        would be the same failure arriving later. A brain that throws here is
+        drawn as a blank card and named in the log, once.
+        """
+        try:
+            describe = getattr(brain, "describe", None)
+            topology = describe() if callable(describe) else None
+            if topology is not None and topology.layers:
+                return self._topology(topology, size)
+            return self._response_diagram(brain, size)
+        except Exception as exc:  # noqa: BLE001 - untrusted entrant code
+            name = type(brain).__name__
+            if name not in self._broken:
+                self._broken.add(name)
+                logger.error("%s cannot be drawn: %s", name, exc)
+            surface = pygame.Surface(size)
+            surface.fill(_CARD)
+            surface.blit(self.font_small.render("cannot be drawn", True, _MUTED), (12, 10))
+            return surface
+
     def _cached_diagram(self, brain: Brain, size: Tuple[int, int]) -> pygame.Surface:
         """Draw the brain's own structure if it offers one, its response if not."""
         key = id(brain)
@@ -205,13 +235,7 @@ class Dashboard:
         if cached is None or cached.get_size() != size:
             if len(self._diagrams) > 64:  # leaders come and go; do not hoard them
                 self._diagrams.clear()
-            describe = getattr(brain, "describe", None)
-            topology = describe() if callable(describe) else None
-            cached = (
-                self._topology(topology, size)
-                if topology is not None and topology.layers
-                else self._response_diagram(brain, size)
-            )
+            cached = self._draw_brain(brain, size)
             self._diagrams[key] = cached
         return cached
 

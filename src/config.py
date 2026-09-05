@@ -123,31 +123,6 @@ def race_track() -> TrackConfig:
 
 
 @dataclass(frozen=True)
-class ObstacleConfig:
-    """Timed hazards on the circuit: traffic lights and crossing pedestrians."""
-
-    enabled: bool = True
-    # Both moving hazard types are switched off. Traffic lights made waiting at
-    # a red barrier dominate the run time; pedestrians proved unlearnable for a
-    # memoryless network, which sees only instantaneous distance and so cannot
-    # tell one walking into its path from one standing still. Obstacles are now
-    # static islands cut into the carriageway (see TrackConfig.islands). The
-    # classes below are kept intact — raise these counts to bring them back.
-    num_traffic_lights: int = 0
-    num_pedestrians: int = 0
-    # Traffic light: a barrier across the road, solid only while red.
-    light_period_frames: int = 260
-    light_red_fraction: float = 0.45
-    light_barrier_circles: int = 4
-    # Pedestrian: a circle crossing the road back and forth.
-    pedestrian_radius: float = 11.0
-    pedestrian_speed: float = 0.9
-    red_color: Tuple[int, int, int] = (220, 70, 70)
-    green_color: Tuple[int, int, int] = (70, 200, 110)
-    pedestrian_color: Tuple[int, int, int] = (240, 200, 90)
-
-
-@dataclass(frozen=True)
 class CarConfig:
     """Physical properties and sensor layout of a car."""
 
@@ -208,14 +183,11 @@ class SimulationConfig:
     random_start: bool = True
     fps: int = 60
     seed: int = 42
-    # Curriculum: learn to drive first, then face the hazards.
-    obstacle_start_generation: int = 30
     dashboard_width: int = 380
     checkpoint_dir: str = "outputs"
     # Everything a comparison rests on lives here and is shared by every
     # entrant. What an entrant brings is only its architecture, in one file
     # under `src/brains/`.
     track: TrackConfig = field(default_factory=TrackConfig)
-    obstacles: ObstacleConfig = field(default_factory=ObstacleConfig)
     car: CarConfig = field(default_factory=CarConfig)
     genetic: GeneticConfig = field(default_factory=GeneticConfig)

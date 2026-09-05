@@ -4,7 +4,6 @@ from src.brains import Brain, BrainRef, build_brain, color_of, entrants, registe
 from src.car import Car
 from src.config import SimulationConfig, race_track, track_variants
 from src.genetic import crossover, mutate, next_generation
-from src.obstacles import ObstacleField
 from src.simulation import Result, Simulation, Squad, Stage, format_results
 from src.track import Track
 from src.track_check import TrackReport, check_track
@@ -13,7 +12,6 @@ __all__ = [
     "Brain",
     "BrainRef",
     "Car",
-    "ObstacleField",
     "Result",
     "Simulation",
     "SimulationConfig",
