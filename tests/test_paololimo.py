@@ -35,8 +35,12 @@ def test_forward_shape_and_range(rng: np.random.Generator) -> None:
 def test_genome_roundtrip(rng: np.random.Generator) -> None:
     net = NeuralNetwork(INPUTS, SPEC, rng)
     genome = net.get_genome()
-    h1, h2 = NetworkConfig().hidden_sizes
-    assert genome.size == INPUTS * h1 + h1 * h2 + h2 * 2 + h1 + h2 + 2
+    cfg = NetworkConfig()
+    (hidden,) = cfg.hidden_sizes
+    expected = INPUTS * hidden + hidden + hidden * 2 + 2  # weights, biases, readout
+    if cfg.skip:
+        expected += INPUTS * 2
+    assert genome.size == expected
     assert INPUTS == CarConfig().num_sensors + 1  # one ray each, plus speed
     inputs = rng.random(INPUTS)
     expected = net.forward(inputs)
@@ -163,10 +167,23 @@ def test_a_skip_is_a_real_extra_path() -> None:
     assert np.allclose(net.forward(sensors), with_skip)
 
 
-def test_options_are_off_by_default() -> None:
-    """The incumbent design is unchanged until the ablation says otherwise."""
+def test_the_default_fits_the_search_budget() -> None:
+    """The design is a bet on the budget, so pin what the bet actually is.
+
+    100 genomes over 120 generations is 12 000 evaluations, and a
+    derivative-free search wants roughly 100 to 1000 of them per parameter. The
+    previous default asked for 366 parameters, which needs 37 000 at the most
+    generous end; this one asks for 150. If someone widens the network again
+    without widening the budget, this is the test that should stop them.
+    """
     cfg = NetworkConfig()
-    assert not cfg.skip and not cfg.decoupled and not cfg.symmetric
     net = NeuralNetwork(INPUTS, spec_from_config(cfg), np.random.default_rng(0))
-    assert len(net.stacks) == 1 and net.stacks[0].skip is None
-    assert net.genome_size == 366
+
+    assert net.genome_size == 150
+    assert len(cfg.hidden_sizes) == 1, "one hidden layer, not two"
+    assert cfg.skip, "the linear path evolution starts from"
+    assert cfg.symmetric, "the mirror symmetry the circuits actually have"
+    assert not cfg.decoupled, "a stack per control doubles the genome"
+
+    evaluations = 100 * 120
+    assert evaluations / net.genome_size >= 60, "too many parameters for the budget"

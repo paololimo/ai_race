@@ -22,7 +22,7 @@ Neither command takes an entrant argument. The grid is whatever is in
 src/
 ├── brains/             # the competitors — one file each, and nothing else
 │   ├── __init__.py     # the registry: Brain protocol, discovery, colours
-│   ├── paololimo.py    # the hand-written network: 8 → 14 → 14 → 2
+│   ├── paololimo.py    # the hand-written network: 8 → 12 → 2, with a skip
 │   ├── codex.py
 │   └── gemini.py
 ├── config.py           # frozen dataclasses: circuits, car, GA, run
@@ -98,10 +98,18 @@ road mask itself, so the rays see them as walls with no dedicated sensor
 channel.
 
 **Brains.** Each entrant is a flat genome the genetic algorithm recombines; the
-weights are never trained by gradient descent. `genetic.py` knows nothing about
-any architecture, which is why one algorithm can breed all of them. The
-hand-written entrant is a dense `8 → 14 → 14 → 2` with `tanh` on every layer,
-366 parameters.
+weights are never trained by gradient descent. There is no gradient to take: the
+fitness is distance travelled before crashing, and reaching it means passing
+through a boolean road mask and a discrete death condition, neither of which has
+a useful derivative. `genetic.py` knows nothing about any architecture, which is
+why one algorithm can breed all of them.
+
+The hand-written entrant is `8 → 12 → 2` with `tanh`, a direct linear path from
+the sensors to the controls alongside the hidden one, and left/right symmetry
+imposed rather than learned: 150 parameters. It was `8 → 14 → 14 → 2` at 366
+until the arithmetic was done — 100 genomes over 120 generations is 12 000
+evaluations, and a derivative-free search wants 100 to 1000 of them per
+parameter, so 366 parameters were never going to be searched, only sampled.
 
 **Physics.** The car only moves forward. Steering authority grows with speed up
 to 1.5 px/frame and then saturates, which makes the turning radius
