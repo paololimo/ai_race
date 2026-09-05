@@ -56,25 +56,49 @@ class Variant:
     name: str
     hidden: Tuple[int, ...] = (14, 14)
     symmetric: bool = False
+    skip: bool = False
+    decoupled: bool = False
     crossover: str = "uniform"
 
     def ref(self) -> BrainRef:
         """This variant as an entrant the harness can put on the grid."""
-        cfg = NetworkConfig(hidden_sizes=self.hidden, symmetric=self.symmetric)
+        cfg = NetworkConfig(
+            hidden_sizes=self.hidden,
+            symmetric=self.symmetric,
+            skip=self.skip,
+            decoupled=self.decoupled,
+        )
         return BrainRef("paololimo", spec_from_config(cfg))
 
 
-# Architecture: is the current default too big to search in 120 generations,
-# and does imposing the mirror symmetry pay for itself?
+# Architecture, one question per group.
+#
+# Size: is the default too big to search in the generations available? The
+# earlier run hinted that it is, but on three seeds the hint means nothing.
+#
+# Symmetry: the problem is mirror-symmetric, so imposing the symmetry halves the
+# search without losing capacity — if the halving is worth more than the two
+# extra forward passes it costs.
+#
+# Skip: a direct input-to-output path gives evolution a linear controller it can
+# refine immediately, instead of one it must first build through two tanh layers.
+#
+# Decoupling: separate stacks per control, so a mutation that improves braking
+# lands in weights steering never reads and cannot damage it.
 ARCHITECTURES: Tuple[Variant, ...] = (
     Variant("linear", ()),
     Variant("8", (8,)),
     Variant("14", (14,)),
     Variant("14-14", (14, 14)),  # the current default
     Variant("24-24", (24, 24)),
-    Variant("8 sym", (8,), symmetric=True),
     Variant("14 sym", (14,), symmetric=True),
     Variant("14-14 sym", (14, 14), symmetric=True),
+    Variant("14 skip", (14,), skip=True),
+    Variant("14-14 skip", (14, 14), skip=True),
+    Variant("14 split", (14,), decoupled=True),
+    Variant("14-14 split", (14, 14), decoupled=True),
+    Variant("14 all", (14,), symmetric=True, skip=True, decoupled=True),
+    Variant("14-14 all", (14, 14), symmetric=True, skip=True, decoupled=True),
 )
 
 # Harness: uniform crossover splits a neuron's incoming weights between parents,
@@ -178,7 +202,7 @@ def main() -> None:
     results = []
     for group, title in ((ARCHITECTURES, "ARCHITECTURE"), (OPERATORS, "CROSSOVER (harness-wide)")):
         header = (
-            f"{title:<14} {'params':>6} {'train med':>10} "
+            f"{title:<16} {'params':>6} {'train med':>10} "
             f"{'race med':>9} {'race range':>14}  {'per seed'}"
         )
         print(f"\n{header}\n" + "-" * len(header))
@@ -193,6 +217,8 @@ def main() -> None:
                 "variant": variant.name,
                 "hidden": list(variant.hidden),
                 "symmetric": variant.symmetric,
+                "skip": variant.skip,
+                "decoupled": variant.decoupled,
                 "crossover": variant.crossover,
                 "parameters": parameter_count(variant, base, inputs),
                 "training": training,
@@ -200,7 +226,7 @@ def main() -> None:
             }
             results.append(row)
             print(
-                f"{variant.name:<14} {row['parameters']:>6} "
+                f"{variant.name:<16} {row['parameters']:>6} "
                 f"{statistics.median(training):>10.2f} {statistics.median(racing):>9.2f} "
                 f"{min(racing):>6.2f}-{max(racing):<7.2f}  "
                 + " ".join(f"{v:.2f}" for v in racing)

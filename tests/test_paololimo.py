@@ -92,3 +92,81 @@ def test_saved_model_carries_its_own_architecture(tmp_path) -> None:
     assert tuple(fresh.brain.spec["hidden_sizes"]) == (9, 7)
     assert fresh.brain.spec["symmetric"] is True
     assert genome.size == brain.genome_size
+
+
+VARIATIONS = (
+    NetworkConfig(),
+    NetworkConfig(skip=True),
+    NetworkConfig(decoupled=True),
+    NetworkConfig(skip=True, decoupled=True),
+    NetworkConfig(hidden_sizes=(9,), skip=True, decoupled=True, symmetric=True),
+    NetworkConfig(hidden_sizes=()),
+)
+
+
+@pytest.mark.parametrize("cfg", VARIATIONS)
+def test_every_variation_drives_and_round_trips(cfg: NetworkConfig) -> None:
+    """Each architectural option has to be a working network on its own."""
+    rng = np.random.default_rng(1)
+    net = NeuralNetwork(INPUTS, spec_from_config(cfg), rng)
+    sensors = rng.random(INPUTS)
+
+    out = net.forward(sensors)
+    assert out.shape == (2,)
+    assert np.all(np.abs(out) <= 1.0)
+
+    genome = net.get_genome()
+    assert genome.ndim == 1 and genome.size == net.genome_size
+    net.set_genome(genome)
+    assert np.allclose(net.forward(sensors), out)
+
+
+@pytest.mark.parametrize("cfg", VARIATIONS)
+def test_every_variation_describes_itself_truthfully(cfg: NetworkConfig) -> None:
+    """The panel draws `describe()`, so it must match the real matrices."""
+    net = NeuralNetwork(INPUTS, spec_from_config(cfg), np.random.default_rng(2))
+    topology = net.describe()
+    assert topology.layers
+    for source, target, weights in topology.edges:
+        assert weights.shape == (topology.layers[source][1], topology.layers[target][1])
+
+
+def test_decoupling_keeps_the_controls_apart() -> None:
+    """The point of separate stacks: a change to one control cannot move the other."""
+    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig(decoupled=True)), np.random.default_rng(3))
+    sensors = np.linspace(0.2, 0.8, INPUTS)
+    before = net.forward(sensors)
+
+    genome = net.get_genome()
+    half = genome.size // 2  # the steering stack comes first
+    genome[:half] += 0.5
+    net.set_genome(genome)
+    after = net.forward(sensors)
+
+    assert after[0] != pytest.approx(before[0]), "steering should have moved"
+    assert after[1] == pytest.approx(before[1]), "throttle must not have moved"
+
+
+def test_a_skip_is_a_real_extra_path() -> None:
+    """The skip must change the output, not sit there unused."""
+    spec = spec_from_config(NetworkConfig(skip=True))
+    net = NeuralNetwork(INPUTS, spec, np.random.default_rng(4))
+    sensors = np.linspace(0.1, 0.9, INPUTS)
+    with_skip = net.forward(sensors)
+
+    genome = net.get_genome()
+    net.stacks[0].skip[:] = 0.0
+    without = net.forward(sensors)
+    assert not np.allclose(with_skip, without)
+
+    net.set_genome(genome)  # and it must come back through the genome
+    assert np.allclose(net.forward(sensors), with_skip)
+
+
+def test_options_are_off_by_default() -> None:
+    """The incumbent design is unchanged until the ablation says otherwise."""
+    cfg = NetworkConfig()
+    assert not cfg.skip and not cfg.decoupled and not cfg.symmetric
+    net = NeuralNetwork(INPUTS, spec_from_config(cfg), np.random.default_rng(0))
+    assert len(net.stacks) == 1 and net.stacks[0].skip is None
+    assert net.genome_size == 366
