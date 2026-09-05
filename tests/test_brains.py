@@ -1,7 +1,8 @@
-"""The brain registry: the contract a competing architecture has to satisfy.
+"""The race harness: the contract a competing architecture has to satisfy.
 
 A brain arriving from another agent is untrusted code held to a fixed
-interface, so these test the interface, not the getters.
+interface, and a checkpoint that fails to describe itself silently races a
+model nobody trained. These test that, not the getters.
 """
 
 from dataclasses import replace
@@ -12,6 +13,7 @@ import pytest
 from src.brains import Brain, BrainRef, build_brain, register_brain
 from src.brains.baseline import config_from_spec, spec_from_config
 from src.config import NetworkConfig, SimulationConfig
+from src.grand_prix import GrandPrix, build_grid, load_entrant
 from src.simulation import Simulation
 
 INPUTS = 8
@@ -108,3 +110,43 @@ def test_checkpoint_carries_the_brain_name(tmp_path) -> None:
 
     _, ref = Simulation(cfg, render=False)._load_genome(path)
     assert ref == BrainRef("test-stub", {"gain": 3.0})
+
+
+def test_grid_rejects_a_checkpoint_built_for_a_different_car(tmp_path) -> None:
+    """Sensor count is the car's, not the brain's: a mismatch is not raceable."""
+    cfg = replace(SimulationConfig(), checkpoint_dir=str(tmp_path))
+    trainer = Simulation(cfg, render=False)
+    trainer.best_genome = build_brain(
+        trainer.brain_ref(), trainer.input_size, np.random.default_rng(0)
+    ).get_genome()
+    trainer.best_fitness = 1.0
+    path = trainer.save_best()
+    with pytest.raises(SystemExit, match="sensor inputs"):
+        load_entrant(path, trainer.input_size + 1, (1, 2, 3))
+
+
+def test_grand_prix_ranks_every_entrant_once(tmp_path) -> None:
+    """Heterogeneous brains must race together and come back classified."""
+    cfg = replace(SimulationConfig(), laps_budget=0.05, checkpoint_dir=str(tmp_path))
+    paths = []
+    for name, ref in (("human", BrainRef("baseline", {})), ("stub", BrainRef("test-stub", {}))):
+        trainer = Simulation(replace(cfg, brain=ref, entrant=name), render=False)
+        trainer.best_genome = build_brain(
+            trainer.brain_ref(), trainer.input_size, np.random.default_rng(2)
+        ).get_genome()
+        trainer.best_fitness = 1.0
+        paths.append(trainer.save_best(f"{name}_genome.npz"))
+
+    grand_prix = GrandPrix(cfg, render=False)
+    entrants = build_grid(paths, grand_prix.input_size)
+    assert len({e.color for e in entrants}) == 2, "entrants must be distinguishable"
+
+    results = grand_prix.run(entrants)
+    grand_prix.close()
+    assert [r.name for r in sorted(results, key=lambda r: r.name)] == ["human", "stub"]
+    assert results == sorted(results, key=lambda r: r.laps, reverse=True)
+
+
+def test_an_empty_grid_is_refused() -> None:
+    with pytest.raises(SystemExit, match="No entrants"):
+        build_grid([], INPUTS)

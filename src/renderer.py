@@ -44,18 +44,29 @@ class Renderer:
         ]
         pygame.draw.polygon(self.screen, color, points)
 
-    def draw_track(self, track: Track, cars: Sequence[Car]) -> Optional[Car]:
-        """Draw the circuit and the cars; return the current leader."""
+    def draw_track(
+        self,
+        track: Track,
+        cars: Sequence[Car],
+        colors: Optional[Sequence[Tuple[int, int, int]]] = None,
+    ) -> Optional[Car]:
+        """Draw the circuit and the cars; return the current leader.
+
+        `colors` gives one colour per car, for a race where each entrant must
+        stay recognisable; without it every car is the same red and only the
+        leader stands out, which is what a single evolving population wants.
+        """
         self.screen.blit(track.surface, (0, 0))
+        palette = {id(c): colors[i] for i, c in enumerate(cars)} if colors else {}
         alive = [c for c in cars if c.alive]
         leader = max(alive, key=lambda c: c.fitness, default=None)
         for car in alive:
-            if car is not leader:
-                self._draw_car(car, _CAR_COLOR)
+            if car is not leader or palette:
+                self._draw_car(car, palette.get(id(car), _CAR_COLOR))
         if leader is not None:
             for endpoint in leader.sensor_endpoints:
                 pygame.draw.line(self.screen, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
-            self._draw_car(leader, _BEST_COLOR)
+            self._draw_car(leader, palette.get(id(leader), _BEST_COLOR))
         return leader
 
     def present(self, panel: pygame.Surface) -> None:
