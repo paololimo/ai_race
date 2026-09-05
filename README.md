@@ -127,12 +127,29 @@ difficult but impossible at any speed.
 **Circuits.** The centreline is a closed polyline, smoothed with Chaikin's
 algorithm and resampled at 4 px spacing. Four layouts:
 
-| Circuit | Use | Lap | Problem it poses |
-|---|---|---|---|
-| serpentine | training | 3 670 px | 180° hairpins, continuous curves |
-| grid-city | training | 3 107 px | right angles: brake *into* the corner |
-| speedway | training | 2 083 px | carry speed, then shed it for the chicane |
-| gauntlet | **race only** | 2 366 px | continuous chicanes, never trained on |
+| Circuit | Use | Lap | Corners forcing < ½ speed | Lap slowed | Problem it poses |
+|---|---|---|---|---|---|
+| serpentine | training | 3 759 px | 2 | 14% | hairpins, then a six-bump slalom down every straight |
+| grid-city | training | 2 701 px | 8 | 12% | right angles: brake *into* the corner, eight times |
+| speedway | training | 2 119 px | 6 | 13% | carry speed, then shed it for a real chicane |
+| gauntlet | **race only** | 2 473 px | 5 | 21% | continuous chicanes, never trained on — the hardest |
+
+They were not balanced, and the imbalance was invisible until the panel grew a
+per-circuit breakdown. Measured, the first three had **one, twelve and one**
+corner forcing below half speed: grid-city was the only circuit that
+discriminated between entrants, speedway was saturated at the frame budget so
+it separated nobody, and the race circuit was the *easiest* of the four — the
+one the entrants are ranked on was the one they were least prepared for.
+
+The levers were geometric, not arbitrary. A hairpin's radius is half the lane
+spacing, so serpentine's were 75 px and takeable at 98% of top speed; the
+difficulty had to come from the straights instead. Speedway's chicane was drawn
+with real direction changes and then smoothed away by three Chaikin passes.
+Gauntlet gained two peaks and 18 px of amplitude. Grid-city lost four of its
+twelve right angles — not because twelve was impossible, an entrant reached
+2.72 laps on it, but because it was learnt far more slowly than the rest, and
+until it was, the compound odds of twelve corners in a row decided the ranking
+rather than anyone's driving.
 
 Hairpins are emitted as explicit semicircular arcs: leaving a single corner for
 the smoothing pass to round off yields a radius far too tight to drive (14 px

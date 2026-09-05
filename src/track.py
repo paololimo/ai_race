@@ -115,20 +115,23 @@ class Track:
 
         Nothing like the flowing serpentine — here the car meets abrupt 90-degree
         turns, which demand braking into the corner rather than a steady arc.
+
+        Eight corners, not the twelve it had. Twelve was not impossible — by
+        generation 40 an entrant was lapping it at 2.72 — but it was learnt far
+        more slowly than the other circuits, and while that lasted the compound
+        odds of twelve corners in a row decided the ranking rather than anyone's
+        driving. Eight keeps the circuit's identity, which is that it has more
+        corners than anywhere else and every one of them is square.
         """
         return [
-            (140.0, 130.0),
-            (860.0, 130.0),
-            (860.0, 300.0),
-            (560.0, 300.0),
-            (560.0, 440.0),
-            (860.0, 440.0),
+            (140.0, 120.0),
+            (860.0, 120.0),
+            (860.0, 330.0),
+            (520.0, 330.0),
+            (520.0, 470.0),
+            (860.0, 470.0),
             (860.0, 590.0),
             (140.0, 590.0),
-            (140.0, 430.0),
-            (400.0, 430.0),
-            (400.0, 290.0),
-            (140.0, 290.0),
         ]
 
     def _speedway_skeleton(self) -> List[Point]:

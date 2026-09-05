@@ -71,14 +71,30 @@ def track_variants() -> Tuple[TrackConfig, ...]:
     and racing on another only proves the network memorised that shape.
     """
     return (
+        # The hairpins were never corners: their radius is half the lane spacing,
+        # so at 150 px spacing they were 75 px — takeable at 98% of top speed.
+        # Tightening the spacing is the only lever that changes that, and six
+        # lanes at 98 px does it, but a road narrow enough to fit them leaves
+        # 18 px for an island against the 26 px corridor each side, so every
+        # island is silently skipped. The difficulty comes from the straights
+        # instead: six bumps rather than three, and two smoothing passes rather
+        # than four so they stay as corners instead of being rounded into a
+        # gentle wave. Amplitude stays under (spacing - road - 10) / 2 = 26, and
+        # short of it: at 26 the corner count is on a cliff.
         TrackConfig(
             name="serpentine",
             layout="serpentine",
             road_width=88.0,
+            bumps_per_straight=6,
+            bump_amplitude=24.0,
+            smoothing_passes=2,
             islands=(0.14, 0.34, 0.56, 0.78, 0.92),
             grass_color=(32, 90, 48),
             road_color=_ASPHALT,
         ),
+        # The corner count came down in the skeleton rather than here: two
+        # smoothing passes would have rounded the right angles away, and square
+        # corners are the whole character of this circuit.
         TrackConfig(
             name="grid-city",
             layout="grid",
@@ -89,12 +105,16 @@ def track_variants() -> Tuple[TrackConfig, ...]:
             grass_color=(58, 96, 172),
             road_color=_ASPHALT,
         ),
+        # The chicane in this skeleton was being smoothed into a gentle curve:
+        # three passes rounded it to a 33 px radius, takeable at 43% of top
+        # speed, and the circuit had exactly one corner worth the name. One pass
+        # leaves the chicane the direction changes it was drawn with.
         TrackConfig(
             name="speedway",
             layout="speedway",
             road_width=96.0,
             width_variation=0.16,
-            smoothing_passes=3,
+            smoothing_passes=1,
             islands=(0.18, 0.44, 0.62, 0.88),
             grass_color=(198, 84, 76),
             road_color=_ASPHALT,
@@ -113,8 +133,13 @@ def race_track() -> TrackConfig:
         layout="zigzag",
         road_width=90.0,
         width_variation=0.14,
-        zigzag_peaks=(4, 5),
-        zigzag_amplitude=72.0,
+        # Eleven peaks at 90 px rather than nine at 72. The race circuit was the
+        # *easiest* of the four by the only measure that matters — one corner
+        # forcing below half speed, against grid-city's twelve — which made the
+        # circuit the entrants are ranked on the one they were least prepared
+        # for. It is now the hardest, which is what a final ought to be.
+        zigzag_peaks=(5, 6),
+        zigzag_amplitude=90.0,
         smoothing_passes=2,
         islands=(0.12, 0.35, 0.58, 0.81),
         grass_color=(86, 62, 140),
