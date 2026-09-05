@@ -109,11 +109,12 @@ separate obstacle channel.
 Values outside `[-1, 1]` are not clipped for you and would give you physics no
 other entrant is subject to. Bound them yourself.
 
-**Optional: `describe()`** — implement it and the dashboard draws your real
-structure; leave it out and it draws your measured input-to-output response
-instead. Nothing about the race changes either way. `layers` are
-`(label, node count, column)`; two layers may share a column, which is how
-parallel streams are drawn, and an edge spanning more than one column is a skip.
+**`describe()`** — required, and checked by the test suite. It is what lets the
+dashboard draw your actual structure beside everyone else's while you train;
+without it you appear as a measured input-to-output response, which says almost
+nothing about your design. `layers` are `(label, node count, column)`; two
+layers may share a column, which is how parallel streams are drawn, and an edge
+spanning more than one column is a skip.
 
 ```python
 from src.brains import Topology
@@ -143,22 +144,46 @@ consequences worth designing around:
 1. One new file, `src/brains/<yourname>.py`. No edits anywhere else.
 2. **No machine-learning libraries.** numpy only — that is the whole point of the
    project. No torch, no tensorflow, no jax, no scikit-learn.
-3. **One `@register_brain` per class.** A second name would put you on the grid
+3. **Everything that turns sensors into controls must be learned.** The shape is
+   entirely yours: as many units and layers as you like, any wiring, any subset
+   of the sensors, and a first layer of 4 or 40 units if that is your design.
+   What you may not do is compute a driving decision in closed form and hand it
+   to the network. `speed / (speed + distance ahead)` is a braking criterion; a
+   free-space centroid weighted by how open each ray is, is a steering target.
+   Both are sound engineering and neither belongs here, because the race
+   compares what evolution finds against what evolution finds — not what an
+   author already knew.
+
+   Reordering the sensors, mirroring them, and plain linear combinations of them
+   are fine: the first weight matrix could build those for itself anyway, so
+   providing them decides nothing.
+4. **Be visualisable: implement `describe()`.** Your entry is drawn in the
+   dashboard beside the others while it trains, and a network nobody can see is
+   half a submission. Return your layers and the weight matrices between them,
+   as above.
+5. **The shape is free.** Any number of layers, any number of neurons in each,
+   any topology — a chain, parallel streams, skips, a single wide layer, no
+   hidden layer at all. Read fewer than the eight sensors if you want to. There
+   is no prescribed architecture and no size to match; the only limits are rule
+   3, the speed bound in rule 11, and that the outputs stay in range.
+6. Bound your outputs to `[-1, 1]` yourself: values outside are not clipped for
+   you and would give you physics no other entrant is subject to.
+7. **One `@register_brain` per class.** A second name would put you on the grid
    twice, under two colours, competing with yourself. The harness ignores the
    extra name and logs a warning.
-4. No training of your own. You supply the architecture; the harness's genetic
+8. No training of your own. You supply the architecture; the harness's genetic
    algorithm finds the weights. No backpropagation, no pretrained weights, no
    reading or writing files.
-5. No randomness of your own: use the `rng` you are given, never
+9. No randomness of your own: use the `rng` you are given, never
    `np.random.seed`, `random` or `time`. The harness scores populations across
    worker processes and reproduces a single-process run exactly.
-6. No state between `forward` calls unless your architecture is deliberately
-   recurrent — and if it is, `set_genome` must reset it, or your behaviour will
-   depend on which cars ran before you.
-7. `forward` runs once per car per frame, millions of times per generation.
-   Something ten times slower than a dense 8→14→14→2 will be a problem.
-8. It must import cleanly and pass `python -m pytest tests -q`. A file that
-   raises on import is logged and left out of the race rather than stopping it.
+10. No state between `forward` calls unless your architecture is deliberately
+    recurrent — and if it is, `set_genome` must reset it, or your behaviour will
+    depend on which cars ran before you.
+11. `forward` runs once per car per frame, millions of times per generation.
+    Something ten times slower than a dense three-layer network is a problem.
+12. It must import cleanly and pass `python -m pytest tests -q`. A file that
+    raises on import is logged and left out of the race rather than stopping it.
 
 ## What you are judged on
 

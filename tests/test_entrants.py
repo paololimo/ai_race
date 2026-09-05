@@ -66,6 +66,34 @@ def test_entrants_are_told_apart_by_colour() -> None:
     assert len({color_of(name) for name in entrants()}) == len(entrants())
 
 
+def test_every_entrant_can_be_drawn() -> None:
+    """`describe()` is required: an entry nobody can see is half a submission.
+
+    The dashboard falls back to a measured input-to-output response for a brain
+    without it, so nothing breaks — but every entry looks alike in the fallback,
+    which hides exactly the differences the race is about.
+    """
+    rng = np.random.default_rng(0)
+    missing, wrong = [], []
+    for name in entrants():
+        brain = build_brain(BrainRef(name), INPUTS, rng)
+        describe = getattr(brain, "describe", None)
+        if not callable(describe):
+            missing.append(name)
+            continue
+        topology = describe()
+        if not topology.layers:
+            wrong.append(f"{name}: described no layers")
+        for source, target, weights in topology.edges:
+            shape = np.asarray(weights).shape
+            expected = (topology.layers[source][1], topology.layers[target][1])
+            if shape != expected:
+                wrong.append(f"{name}: edge {source}->{target} is {shape}, not {expected}")
+
+    assert not missing, f"no describe(): {', '.join(missing)}"
+    assert not wrong, "; ".join(wrong)
+
+
 def test_every_squad_faces_the_identical_stage(tmp_path) -> None:
     """One draw per evaluation, shared by everyone.
 
