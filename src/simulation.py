@@ -374,7 +374,7 @@ class Simulation:
                 input_size=self.input_size,
                 # The entrant's name and its full spec, so the checkpoint can be
                 # rebuilt exactly. Saving only the layer sizes dropped every
-                # other choice — `symmetric` above all, which changes what the
+                # other choice an entrant makes, some of which change what the
                 # same weights compute — and raced a model nobody trained.
                 brain=squad.brain.name,
                 spec=json.dumps(dict(squad.brain.spec)),

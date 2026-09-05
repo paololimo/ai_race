@@ -78,8 +78,8 @@ class Topology:
     """What an entrant optionally tells the panel about its own shape.
 
     There is no way to work this out from outside: one entrant is a dense chain,
-    another two parallel streams with skips, another a projection onto a
-    symmetry basis. So a brain that wants to be drawn describes itself, and one
+    another two parallel streams with skips, another a single small net reused
+    on several views. So a brain that wants to be drawn describes itself, and one
     that does not is drawn by its measured input-to-output response instead.
 
     `layers` are `(label, node count, column)` — the column places them left to

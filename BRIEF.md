@@ -159,8 +159,8 @@ consequences worth designing around:
    compares what evolution finds against what evolution finds — not what an
    author already knew.
 
-   Reordering the sensors, mirroring them, and plain linear combinations of them
-   are fine: the first weight matrix could build those for itself anyway, so
+   Reordering the sensors, or taking plain linear combinations of them, is
+   fine: the first weight matrix could build those for itself anyway, so
    providing them decides nothing.
 4. **Be visualisable: implement `describe()`.** Your entry is drawn in the
    dashboard beside the others while it trains, and a network nobody can see is
