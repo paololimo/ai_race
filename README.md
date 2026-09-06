@@ -8,7 +8,8 @@ Several networks compete: one written by hand, the others by AI agents. They
 **train together**, in the same run, on the same three circuits, and then race
 together on a fourth circuit none of them has ever seen.
 
-The first full run, 120 generations on the balanced circuits, ended like this:
+The first full run, 120 generations on the balanced circuits, ended like this
+— over three laps, from a grid across the carriageway, both since changed:
 
 ```
  1. paololimo  3.00 laps  WINNER — 1089 frames
@@ -83,7 +84,7 @@ python train.py --shown 20                     # draw more cars per entrant
 python train.py --headless --record run.mp4    # every frame, ~70 min of video
 python train.py --headless --record run.mp4 --record-clip 3   # ~6 min instead
 python race.py --headless --record race.mp4    # the race, filmed whole
-python race.py --laps 5                        # a longer race
+python race.py --laps 3                        # a shorter race
 python race.py                                 # the race, on the unseen circuit
 python race.py --track 1                       # the same grid on a training circuit
 python -m pytest tests -q                      # tests
@@ -377,19 +378,30 @@ Everything grows by itself when an entrant is added.
 ## The race
 
 Every champion goes onto `gauntlet` together, one colour each, after a three
-second countdown. **First past three laps wins** (`--laps N`); anyone who never
+second countdown. **First past five laps wins** (`--laps N`); anyone who never
 gets there is placed behind the finishers, by distance. Ranking by distance
 covered in a fixed number of frames — which is what this used to do — picks the
 same winner as a real race only while nobody crashes, and that is not the usual
 case. A car that crosses the line parks, so second and third get a time of their
 own rather than being frozen wherever the winner left them.
 
-Cars have no collision with one another, the physics never modelled it, so the
-grid is drawn **across** the carriageway: every car starts on the same point of
-the lap, side by side. Spacing them 26 px apart *along* the lap was fair —
-distance is counted from each car's own start — but it made the picture lie. A
-car 72 px further back could be leading on distance while looking third on
-screen, which is no use in a race that exists to be watched.
+**Every car starts from the identical point**, superimposed. Cars have no
+collision with one another — the physics never modelled it — so nothing forces
+them apart, and two arrangements that did were tried and dropped:
+
+- 26 px apart *along* the lap. Fair, since distance is counted from each car's
+  own start, but the picture lied: a car 72 px back could lead on distance while
+  looking level.
+- A grid *across* the carriageway. It read correctly, and measurement put the
+  cost of a slot at **a whole lap** — the same entrant scored 1.82 laps from one
+  offset and 0.82 from none. A placing decided by a seating plan.
+
+Superimposed has nothing in it to correct for. What it costs is that two cars
+driving the same line are drawn on top of each other — for eleven of the first
+race's eighteen seconds, as it happens — and that is a finding rather than a
+fault: two architectures arriving at the same line is the comparison this whole
+project exists to make. The car furthest along is drawn last, so the one on top
+of a pile is the one leading it.
 
 ## Moving hazards, and why there are none
 

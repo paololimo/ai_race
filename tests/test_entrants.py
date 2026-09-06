@@ -262,13 +262,17 @@ def test_the_race_is_decided_at_the_flag_not_at_the_clock(tmp_path) -> None:
     assert "WINNER" in format_results(results)
 
 
-def test_the_grid_is_across_the_road_not_along_it(tmp_path) -> None:
-    """Every car starts at the same point on the lap, side by side.
+def test_every_car_starts_from_the_identical_point(tmp_path) -> None:
+    """Superimposed, because any other arrangement decides something.
 
-    Staggering them along the centreline was fair — distance is measured from
-    each car's own start — but it made the picture lie: a car 72 px further
-    back could be ahead on distance covered while looking behind on screen,
-    which is no use in a race that exists to be watched.
+    Two were tried first. Spacing them 26 px apart along the lap was fair —
+    distance is counted from each car's own start — but made the picture lie: a
+    car 72 px back could lead on distance while looking level. A grid across
+    the carriageway read correctly, and was measured to be worth a whole lap to
+    a marginal entrant, which is a placing decided by a seating plan.
+
+    Superimposed has nothing in it to correct for. Cars overlapping on screen
+    is then a finding — two architectures on the same line — and not a fault.
     """
     simulation = Simulation(config(tmp_path), render=False)
     simulation.train()
@@ -277,25 +281,13 @@ def test_the_grid_is_across_the_road_not_along_it(tmp_path) -> None:
     raced = Simulation(config(tmp_path), render=False)
     circuit = Track(race_track())
     cars = []
-    original = raced._drive
     raced._drive = lambda crew, *a, **k: cars.extend(c for _, c in crew) or True
     raced.race(circuit)
-    raced._drive = original
 
     assert len(cars) > 1
-    # Side by side, not one behind another: every pair is within a road width
-    # of every other, where the old stagger put 72 px between first and last
-    # along the lap. (Their nearest centreline index still differs by a sample
-    # or two — projecting an offset point onto a curve does that — but no car
-    # is given ground, since progress is counted from wherever it started.)
-    width = circuit.road_width_at_index(0)
-    assert all(
-        np.hypot(a.x - b.x, a.y - b.y) <= width for a in cars for b in cars
-    ), "the grid is not abreast"
-    # Distinct slots, and every one of them on the road.
-    assert len({(round(c.x, 3), round(c.y, 3)) for c in cars}) == len(cars)
-    assert all(circuit.is_on_road(c.x, c.y) for c in cars)
+    assert len({(c.x, c.y, c.angle) for c in cars}) == 1, "the grid is not identical"
     assert all(c.progress == 0.0 for c in cars)
+    assert circuit.is_on_road(cars[0].x, cars[0].y)
 
 
 def test_racing_without_champions_says_so(tmp_path) -> None:

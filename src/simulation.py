@@ -270,12 +270,7 @@ class Simulation:
         return Stage(track, number, variant, start, self.frame_budget(track))
 
     def _car(
-        self,
-        stage: Stage,
-        squad: Squad,
-        genome: np.ndarray,
-        start: Optional[int] = None,
-        lateral: float = 0.0,
+        self, stage: Stage, squad: Squad, genome: np.ndarray, start: Optional[int] = None
     ) -> Car:
         """The same construction the pool workers do — see `car.build_car`."""
         return build_car(
@@ -286,7 +281,6 @@ class Simulation:
             self.input_size,
             self._brain_rng,
             stage.start if start is None else start,
-            lateral,
         )
 
     def _drive(
@@ -604,7 +598,7 @@ class Simulation:
 
     # -- the race ------------------------------------------------------------
 
-    def race(self, track: Optional[Track] = None, laps: float = 3.0) -> List[Result]:
+    def race(self, track: Optional[Track] = None, laps: float = 5.0) -> List[Result]:
         """Race every champion over `laps` laps; return the classification.
 
         The circuit is `gauntlet` unless told otherwise: nobody trained on it, so
@@ -638,24 +632,22 @@ class Simulation:
         if not entered:
             raise SystemExit("No champions in outputs/ — run train.py first.")
 
-        # A grid across the carriageway rather than a queue along it. Every car
-        # starts on the same centreline point, so the one in front on screen is
-        # the one in front in the results — which staggering them along the lap
-        # made false, since a car 72 px back could be ahead on distance covered.
-        room = circuit.road_width_at_index(0) / 2 - self.cfg.car.width
-        slots = len(entered)
+        # Every car starts on the same point, superimposed. Two earlier
+        # arrangements were tried and both traded away something they should
+        # not have. Spacing them 26 px apart along the lap was fair — distance
+        # is counted from each car's own start — but made the picture lie: a car
+        # 72 px back could lead on distance while looking level. A grid across
+        # the carriageway read correctly and was measured to be worth a whole
+        # lap to a marginal driver, which is a real result decided by a seating
+        # plan.
+        #
+        # Superimposed is the only arrangement with nothing in it to correct
+        # for. Two cars that stay on top of each other for eleven seconds are
+        # not a drawing fault: they are two architectures that found the same
+        # line, which is the comparison this whole project exists to make.
         crew: List[Tuple[Squad, Car]] = [
-            (
-                squad,
-                self._car(
-                    stage,
-                    squad,
-                    genome,
-                    start=0,
-                    lateral=0.0 if slots < 2 else room * (2 * i / (slots - 1) - 1),
-                ),
-            )
-            for i, (squad, genome) in enumerate(entered)
+            (squad, self._car(stage, squad, genome, start=0))
+            for squad, genome in entered
         ]
 
         logger.info(

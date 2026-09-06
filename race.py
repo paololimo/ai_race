@@ -1,7 +1,7 @@
 """Put every champion on the grid together, on the circuit none of them saw.
 
     python race.py                        # the race, on `gauntlet`
-    python race.py --laps 5               # a longer race
+    python race.py --laps 3               # a shorter race
     python race.py --track 1              # the same grid on a training circuit
     python race.py --headless --record outputs/race.mp4
 
@@ -24,8 +24,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--laps",
         type=float,
-        default=3.0,
-        help="laps to race (default 3). First past this distance wins; anyone "
+        default=5.0,
+        help="laps to race (default 5). First past this distance wins; anyone "
         "who never gets there is placed behind the finishers, by distance.",
     )
     parser.add_argument(

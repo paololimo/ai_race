@@ -52,7 +52,6 @@ class Car:
         brain: Brain,
         cfg: CarConfig,
         start_index: Optional[int] = None,
-        lateral: float = 0.0,
     ) -> None:
         self.cfg = cfg
         self.track = track
@@ -60,13 +59,6 @@ class Car:
         index = 0 if start_index is None else start_index
         self.x, self.y = track.position_at_index(index)
         self.angle = track.heading_at_index(index)
-        # A grid slot across the carriageway, for a race. Cars have to start
-        # somewhere distinct or they are drawn on top of each other, and
-        # offsetting them *along* the lap instead makes the leader on screen
-        # the one who has travelled least — a race nobody can read.
-        if lateral:
-            self.x -= math.sin(self.angle) * lateral
-            self.y += math.cos(self.angle) * lateral
         self.speed = 0.0
         self.alive = True
         self.finished = False  # crossed the line, as opposed to crashed
@@ -213,7 +205,6 @@ def build_car(
     input_size: int,
     rng: np.random.Generator,
     start_index: Optional[int],
-    lateral: float = 0.0,
 ) -> Car:
     """Put one genome on the grid.
 
@@ -224,4 +215,4 @@ def build_car(
     """
     driver = build_brain(ref, input_size, rng)
     driver.set_genome(genome)
-    return Car(track, driver, cfg, start_index, lateral)
+    return Car(track, driver, cfg, start_index)

@@ -152,7 +152,10 @@ class Renderer:
         head, tail = track.start_line(start_index)
         pygame.draw.line(self.view, track.cfg.line_color, head, tail, 3)
         alive = [(car, color) for car, color in zip(cars, colors, strict=True) if car.alive]
-        for car, color in alive:
+        # Furthest along drawn last, so the car on top of a pile is the one
+        # leading it. Drawing in entrant order put whoever sorts last on top,
+        # which in a race where cars share a line is an alphabetical verdict.
+        for car, color in sorted(alive, key=lambda pair: pair[0].progress):
             self._draw_car(car, color)
         leader = max((car for car, _ in alive), key=lambda c: c.fitness, default=None)
         if leader is not None:
