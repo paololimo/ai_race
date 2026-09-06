@@ -11,11 +11,11 @@ things. Each squad breeds alone; only the conditions are shared.
 
 import json
 import logging
-import time
 import multiprocessing
 import multiprocessing.pool
 import os
 import random
+import time
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -25,10 +25,10 @@ import numpy as np
 import pygame
 
 from src import parallel
+from src.analysis import Analysis, Series
 from src.brains import BrainRef, Color, build_brain, color_of, entrants
 from src.car import Car, build_car, network_input_size
 from src.config import SimulationConfig, race_track, track_variants
-from src.analysis import Analysis, Series
 from src.dashboard import Dashboard, Entry
 from src.genetic import mutation_sigma, next_generation
 from src.recorder import Recorder
@@ -628,14 +628,13 @@ class Simulation:
         limit = int(2.0 * laps * circuit.lap_length / self.cfg.car.max_speed)
         stage = Stage(circuit, 0, 0, None, max(60, limit))
 
-        entered = [
-            (squad, genome)
-            for squad in self.squads
-            for genome in [self.load_champion(squad)]
-            if genome is not None or logger.warning(
-                "%s has no champion yet and sits this one out", squad.name
-            )
-        ]
+        entered = []
+        for squad in self.squads:
+            genome = self.load_champion(squad)
+            if genome is None:
+                logger.warning("%s has no champion yet and sits this one out", squad.name)
+                continue
+            entered.append((squad, genome))
         if not entered:
             raise SystemExit("No champions in outputs/ — run train.py first.")
 

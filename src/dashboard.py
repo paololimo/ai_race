@@ -153,7 +153,7 @@ class Dashboard:
                 continue
             # Only the strongest tenth: every edge at once is an unreadable mat.
             threshold = np.percentile(np.abs(weights), 90)
-            for i, j in zip(*np.where(np.abs(weights) >= threshold)):
+            for i, j in zip(*np.where(np.abs(weights) >= threshold), strict=True):
                 strength = abs(weights[i, j]) / scale
                 base = POSITIVE if weights[i, j] > 0 else NEGATIVE
                 pygame.draw.line(
@@ -196,7 +196,7 @@ class Dashboard:
 
         for i, y in enumerate(input_ys):
             pygame.draw.circle(surface, ACCENT if i < rays else MUTED, (left, int(y)), 3)
-        for y, label in zip(output_ys, ("S", "T")):
+        for y, label in zip(output_ys, ("S", "T"), strict=True):
             pygame.draw.circle(surface, TEXT, (right, int(y)), 3)
             surface.blit(self.font_small.render(label, True, MUTED), (right + 6, int(y) - 6))
         return surface
@@ -308,13 +308,12 @@ __all__ = [
     "ACCENT",
     "BG",
     "CARD",
-    "Dashboard",
-    "Entry",
     "MUTED",
     "NEGATIVE",
     "POSITIVE",
-    "Series",
     "TEXT",
+    "Dashboard",
+    "Entry",
     "response",
     "tint",
 ]

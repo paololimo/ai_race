@@ -39,7 +39,9 @@ def test_genome_roundtrip(rng: np.random.Generator) -> None:
     widths = (INPUTS, *cfg.hidden_sizes, 2)
     # A weight matrix and a bias per step of the chain, plus the skip's own
     # matrix straight from the inputs to the controls.
-    expected = sum(a * b + b for a, b in zip(widths, widths[1:]))
+    # Deliberately ragged: `widths[1:]` is one shorter, and zip stopping at
+    # the shorter of the two is what walks the chain a step at a time.
+    expected = sum(a * b + b for a, b in zip(widths, widths[1:]))  # noqa: B905
     if cfg.skip:
         expected += INPUTS * 2
     assert genome.size == expected
@@ -139,7 +141,8 @@ def test_every_variation_describes_itself_truthfully(cfg: NetworkConfig) -> None
 
 def test_decoupling_keeps_the_controls_apart() -> None:
     """The point of separate stacks: a change to one control cannot move the other."""
-    net = NeuralNetwork(INPUTS, spec_from_config(NetworkConfig(decoupled=True)), np.random.default_rng(3))
+    spec = spec_from_config(NetworkConfig(decoupled=True))
+    net = NeuralNetwork(INPUTS, spec, np.random.default_rng(3))
     sensors = np.linspace(0.2, 0.8, INPUTS)
     before = net.forward(sensors)
 

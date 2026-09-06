@@ -67,10 +67,47 @@ class Brain(Protocol):
         """Load a vector produced by `get_genome` back into the brain."""
         ...
 
-    # Optional, and not part of the protocol: `describe(self) -> Topology`.
-    # Implement it and the dashboard draws your real structure — nodes, layers
-    # and edges tinted by weight. Leave it out and it draws your measured
-    # response instead. Either way nothing about the race changes.
+    # Not part of the protocol, but required of an entrant and checked by the
+    # test suite: `describe(self) -> Topology`. It makes the dashboard draw
+    # your real structure — nodes, layers and edges tinted by weight. The
+    # dashboard falls back to drawing your measured response without it, so
+    # nothing about the race changes, but every entry looks alike in that
+    # fallback, which hides exactly what the race is meant to show.
+
+
+class FlatGenome:
+    """Genome flattening for a brain whose parameters are named arrays.
+
+    List the parameter names, in genome order, in `PARAMS`; the vector layout,
+    its size and the exact inverse of it all follow from that one tuple. A
+    brain whose parameters are not named attributes — one holding a list of
+    stacks, say — implements the three methods itself instead.
+    """
+
+    PARAMS: Tuple[str, ...] = ()
+
+    def _targets(self) -> Tuple[Tuple[str, np.ndarray], ...]:
+        """The parameters, in genome order, paired with their current values."""
+        return tuple((name, getattr(self, name)) for name in self.PARAMS)
+
+    @property
+    def genome_size(self) -> int:
+        """Total learnable parameters. Never changes for a given `spec`."""
+        return sum(target.size for _, target in self._targets())
+
+    def get_genome(self) -> np.ndarray:
+        """Every parameter, flattened into one 1-D float array."""
+        return np.concatenate([target.ravel() for _, target in self._targets()])
+
+    def set_genome(self, genome: np.ndarray) -> None:
+        """The exact inverse of `get_genome`."""
+        genome = np.asarray(genome, dtype=float)
+        if genome.size != self.genome_size:
+            raise ValueError(f"Genome size {genome.size} does not match {self.genome_size}")
+        offset = 0
+        for name, target in self._targets():
+            setattr(self, name, genome[offset : offset + target.size].reshape(target.shape))
+            offset += target.size
 
 
 @dataclass(frozen=True)
@@ -183,10 +220,11 @@ def build_brain(ref: BrainRef, input_size: int, rng: np.random.Generator) -> Bra
 __all__ = [
     "BRAIN_FACTORY",
     "Brain",
-    "Topology",
     "BrainFactory",
     "BrainRef",
     "Color",
+    "FlatGenome",
+    "Topology",
     "build_brain",
     "color_of",
     "entrants",

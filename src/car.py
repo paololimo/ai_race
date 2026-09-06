@@ -1,6 +1,7 @@
 """Car physics, ray sensors and fitness accounting."""
 
 import math
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -13,8 +14,12 @@ _HIT_THRESHOLD = 1.0  # clearance at or below this counts as the verge
 _MIN_STEP = 1.0
 
 
+@lru_cache(maxsize=None)
 def _sensor_fan(cfg: CarConfig) -> Tuple[float, Tuple[float, ...]]:
     """The fixed ray fan: a half-spread offset and one step per ray.
+
+    Cached on the (frozen) config: a fresh car is built for every genome on
+    every circuit of every generation, and the fan is the same tuple each time.
 
     Kept in the two pieces the caller adds to its heading, rather than folded
     into a single offset, so the arithmetic stays `heading - half + step` — the
@@ -79,6 +84,7 @@ class Car:
         self._width, self._height = track.cfg.width, track.cfg.height
         self._reach = cfg.sensor_range
         self._half_spread, self._ray_steps = _sensor_fan(cfg)
+        self._max_steering = math.radians(cfg.max_steering)
 
     @property
     def fitness(self) -> float:
@@ -121,7 +127,7 @@ class Car:
             if clearance <= _HIT_THRESHOLD:
                 return distance, (px, py)
             step = clearance - _HIT_THRESHOLD
-            distance += step if step > _MIN_STEP else _MIN_STEP
+            distance += max(_MIN_STEP, step)
         return reach, (x + dx * reach, y + dy * reach)
 
     def sense(self) -> np.ndarray:
@@ -155,7 +161,7 @@ class Car:
         # saturates. Past that point the turning radius is speed / turn rate, so
         # slowing down is what buys a tighter corner.
         authority = min(1.0, self.speed / self.cfg.steering_ref_speed)
-        turn = math.radians(self.cfg.max_steering) * steering * authority
+        turn = self._max_steering * steering * authority
         self.angle += turn
         self.x += math.cos(self.angle) * self.speed
         self.y += math.sin(self.angle) * self.speed

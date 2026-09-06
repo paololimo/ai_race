@@ -83,7 +83,7 @@ class _Stack:
         self.sizes = sizes
         self.weights: List[np.ndarray] = []
         self.biases: List[np.ndarray] = []
-        for n_in, n_out in zip(sizes[:-1], sizes[1:]):
+        for n_in, n_out in zip(sizes[:-1], sizes[1:], strict=True):
             spread = scale / np.sqrt(n_in)
             self.weights.append(rng.normal(0.0, spread, size=(n_in, n_out)))
             self.biases.append(rng.normal(0.0, spread, size=n_out))
@@ -96,7 +96,7 @@ class _Stack:
     def forward(self, inputs: np.ndarray) -> np.ndarray:
         activation = inputs
         last = len(self.weights) - 1
-        for i, (weight, bias) in enumerate(zip(self.weights, self.biases)):
+        for i, (weight, bias) in enumerate(zip(self.weights, self.biases, strict=True)):
             total = activation @ weight + bias
             if i == last and self.skip is not None:
                 total = total + inputs @ self.skip

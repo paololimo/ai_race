@@ -4,8 +4,8 @@ import numpy as np
 import pygame
 import pytest
 
-from src.config import CarConfig, GeneticConfig, track_variants
 from src.car import Car, network_input_size
+from src.config import CarConfig, GeneticConfig, track_variants
 from src.genetic import crossover, mutate, next_generation, select_breeding_pool
 from src.track import Track
 from src.track_check import widest_corridor

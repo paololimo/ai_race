@@ -5,11 +5,11 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from src.brains import Topology, register_brain
+from src.brains import FlatGenome, Topology, register_brain
 
 
 @register_brain("claude")
-class MirrorBrain:
+class MirrorBrain(FlatGenome):
     """Sensors to controls through a single small net used twice.
 
     The track does not care which way round it is drawn: mirror a corner and the
@@ -26,6 +26,8 @@ class MirrorBrain:
     corner. Nothing about braking, gap-picking or turn direction is computed
     here — the constraint is a symmetry, not a decision.
     """
+
+    PARAMS = ("w1", "b1", "w2", "ws", "b2")
 
     def __init__(self, input_size: int, spec: Mapping[str, Any], rng: np.random.Generator) -> None:
         hidden = int(spec.get("hidden", 12))
@@ -49,15 +51,6 @@ class MirrorBrain:
         # generation and this keeps it to two matmuls and no allocation.
         self._pair = np.empty((2, self.input_size), dtype=float)
 
-    def _targets(self) -> tuple[tuple[str, np.ndarray], ...]:
-        """The parameters, in genome order. The one place that order is written."""
-        return tuple((name, getattr(self, name)) for name in ("w1", "b1", "w2", "ws", "b2"))
-
-    @property
-    def genome_size(self) -> int:
-        """Total learnable parameters. Never changes for a given `spec`."""
-        return sum(target.size for _, target in self._targets())
-
     def forward(self, inputs: np.ndarray) -> np.ndarray:
         """Sensors in, `[steering, throttle]` out, both within [-1, 1]."""
         pair = self._pair
@@ -75,19 +68,6 @@ class MirrorBrain:
         steering = 0.5 * (out[0, 0] - out[1, 0])
         throttle = 0.5 * (out[0, 1] + out[1, 1])
         return np.array([steering, throttle])
-
-    def get_genome(self) -> np.ndarray:
-        """Every parameter, flattened into one 1-D float array."""
-        return np.concatenate([target.ravel() for _, target in self._targets()])
-
-    def set_genome(self, genome: np.ndarray) -> None:
-        """The exact inverse of `get_genome`."""
-        if genome.size != self.genome_size:
-            raise ValueError(f"Genome size {genome.size} does not match {self.genome_size}")
-        offset = 0
-        for name, target in self._targets():
-            setattr(self, name, genome[offset : offset + target.size].reshape(target.shape))
-            offset += target.size
 
     def describe(self) -> Topology:
         """The shape the dashboard draws: one stream, one skip, applied twice."""

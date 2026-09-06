@@ -151,7 +151,7 @@ class Renderer:
         self.view.blit(track.surface, (0, 0))
         head, tail = track.start_line(start_index)
         pygame.draw.line(self.view, track.cfg.line_color, head, tail, 3)
-        alive = [(car, color) for car, color in zip(cars, colors) if car.alive]
+        alive = [(car, color) for car, color in zip(cars, colors, strict=True) if car.alive]
         for car, color in alive:
             self._draw_car(car, color)
         leader = max((car for car, _ in alive), key=lambda c: c.fitness, default=None)

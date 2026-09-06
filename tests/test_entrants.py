@@ -213,7 +213,7 @@ def test_scoring_on_workers_matches_one_process(tmp_path) -> None:
     pooled = Simulation(config(tmp_path), render=False, workers=3)
     try:
         pooled.train()
-        for one, many in zip(serial.squads, pooled.squads):
+        for one, many in zip(serial.squads, pooled.squads, strict=True):
             assert one.history == pytest.approx(many.history)
     finally:
         pooled.close()
@@ -299,7 +299,7 @@ def test_the_grid_is_across_the_road_not_along_it(tmp_path) -> None:
 
 
 def test_racing_without_champions_says_so(tmp_path) -> None:
-    with pytest.raises(SystemExit, match="run train.py first"):
+    with pytest.raises(SystemExit, match=r"run train\.py first"):
         Simulation(config(tmp_path), render=False).race()
 
 

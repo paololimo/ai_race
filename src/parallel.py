@@ -87,7 +87,9 @@ def worker_init(cfg: SimulationConfig) -> None:
     import pygame
 
     pygame.init()
-    _WORKER = _Worker(cfg, build_circuits(cfg), np.random.default_rng(0), network_input_size(cfg.car))
+    _WORKER = _Worker(
+        cfg, build_circuits(cfg), np.random.default_rng(0), network_input_size(cfg.car)
+    )
 
 
 def evaluate(job: Job) -> Tuple[int, List[float]]:

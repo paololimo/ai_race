@@ -41,12 +41,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.brains import BrainRef, build_brain  # noqa: E402
-from src.brains.paololimo import NetworkConfig, spec_from_config  # noqa: E402
-from src.car import network_input_size  # noqa: E402
-from src.cli import default_workers  # noqa: E402
-from src.config import SimulationConfig  # noqa: E402
-from src.simulation import Simulation  # noqa: E402
+from src.brains import BrainRef, build_brain
+from src.brains.paololimo import NetworkConfig, spec_from_config
+from src.car import network_input_size
+from src.cli import default_workers
+from src.config import SimulationConfig
+from src.simulation import Simulation
 
 logger = logging.getLogger("ablation")
 

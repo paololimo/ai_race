@@ -109,7 +109,7 @@ class Analysis:
         peak = max(float(r[-1]) for r in running) or 1.0
         for s in tracked:  # the raw scores first, so the envelopes sit on top
             self._line(plot, s.best, span, peak, tint(s.color, 0.38), 1)
-        for s, values in zip(tracked, running):
+        for s, values in zip(tracked, running, strict=True):
             end = self._line(plot, values, span, peak, s.color, 2)[-1]
             pygame.draw.circle(self.surface, s.color, end, 3)
         self._text(f"{peak:.2f}", plot.right - 30, 20, MUTED)

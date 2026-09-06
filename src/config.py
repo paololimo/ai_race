@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from typing import Tuple
 
-
 # One asphalt tone across every circuit: only the surroundings change colour.
 _ASPHALT = (44, 44, 52)
 

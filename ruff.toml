@@ -1,0 +1,29 @@
+# The checklist in CLAUDE.md calls for `ruff check`, and with no configuration
+# that command returned 229 findings of which 211 were ruff's default opinion
+# that `Dict` should be `dict` and `Optional[X]` should be `X | None` — the
+# opposite of the convention this project and its instructions follow. A lint
+# whose output is 92% disagreement about house style is a lint nobody reads.
+#
+# So the rules selected here are the ones that catch mistakes rather than
+# preferences, and the modernisation family (UP) is deliberately absent.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = [
+    "E",     # pycodestyle errors, including E402 (import not at top of file)
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes: undefined names, unused imports, unused variables
+    "I",     # import ordering
+    "B",     # bugbear: mutable defaults, loop-variable capture, and the like
+    "BLE",   # blind `except:` — deliberate in two places, and marked there
+    "FURB",  # obvious modernisations that are not about typing style
+    "RUF",   # ruff's own checks, including unused `noqa`
+]
+ignore = [
+    # Both are preferences about how to spell a thing that is already clear:
+    # `[*a, b]` over `a + [b]`, and `pairwise` over `zip(x[:-1], x[1:])`. The
+    # second in particular reads worse here, where the pairs are layer widths.
+    "RUF005",
+    "RUF007",
+]

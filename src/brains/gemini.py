@@ -4,12 +4,23 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from src.brains import Topology, register_brain
+from src.brains import FlatGenome, Topology, register_brain
 
 
 @register_brain("gemini")
-class GeminiBrain:
+class GeminiBrain(FlatGenome):
     """Decoupled dual-stream architecture with direct linear skip connections."""
+
+    PARAMS = (
+        "w_steer1",
+        "b_steer",
+        "w_throt1",
+        "b_throt",
+        "w_steer2",
+        "w_throt2",
+        "w_skip",
+        "b_out",
+    )
 
     def __init__(self, input_size: int, spec: Mapping[str, Any], rng: np.random.Generator) -> None:
         steer_hidden = int(spec.get("steer_hidden", 6))
@@ -31,23 +42,6 @@ class GeminiBrain:
         self.w_skip = rng.normal(0.0, scale_in, size=(input_size, 2))
         self.b_out = rng.normal(0.0, scale_in, size=2)
 
-    def _targets(self) -> tuple[tuple[str, np.ndarray], ...]:
-        """The parameters, in genome order. The one place that order is written."""
-        return (
-            ("w_steer1", self.w_steer1),
-            ("b_steer", self.b_steer),
-            ("w_throt1", self.w_throt1),
-            ("b_throt", self.b_throt),
-            ("w_steer2", self.w_steer2),
-            ("w_throt2", self.w_throt2),
-            ("w_skip", self.w_skip),
-            ("b_out", self.b_out),
-        )
-
-    @property
-    def genome_size(self) -> int:
-        return sum(target.size for _, target in self._targets())
-
     def forward(self, inputs: np.ndarray) -> np.ndarray:
         h_steer = np.tanh(inputs @ self.w_steer1 + self.b_steer)
         h_throt = np.tanh(inputs @ self.w_throt1 + self.b_throt)
@@ -58,17 +52,6 @@ class GeminiBrain:
             + self.b_out
         )
         return np.tanh(out)
-
-    def get_genome(self) -> np.ndarray:
-        return np.concatenate([target.ravel() for _, target in self._targets()])
-
-    def set_genome(self, genome: np.ndarray) -> None:
-        if genome.size != self.genome_size:
-            raise ValueError(f"Genome size {genome.size} does not match {self.genome_size}")
-        offset = 0
-        for name, target in self._targets():
-            setattr(self, name, genome[offset : offset + target.size].reshape(target.shape))
-            offset += target.size
 
     def describe(self) -> Topology:
         return Topology(
