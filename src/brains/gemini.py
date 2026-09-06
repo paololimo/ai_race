@@ -31,18 +31,22 @@ class GeminiBrain:
         self.w_skip = rng.normal(0.0, scale_in, size=(input_size, 2))
         self.b_out = rng.normal(0.0, scale_in, size=2)
 
+    def _targets(self) -> tuple[tuple[str, np.ndarray], ...]:
+        """The parameters, in genome order. The one place that order is written."""
+        return (
+            ("w_steer1", self.w_steer1),
+            ("b_steer", self.b_steer),
+            ("w_throt1", self.w_throt1),
+            ("b_throt", self.b_throt),
+            ("w_steer2", self.w_steer2),
+            ("w_throt2", self.w_throt2),
+            ("w_skip", self.w_skip),
+            ("b_out", self.b_out),
+        )
+
     @property
     def genome_size(self) -> int:
-        return (
-            self.w_steer1.size
-            + self.b_steer.size
-            + self.w_throt1.size
-            + self.b_throt.size
-            + self.w_steer2.size
-            + self.w_throt2.size
-            + self.w_skip.size
-            + self.b_out.size
-        )
+        return sum(target.size for _, target in self._targets())
 
     def forward(self, inputs: np.ndarray) -> np.ndarray:
         h_steer = np.tanh(inputs @ self.w_steer1 + self.b_steer)
@@ -56,34 +60,13 @@ class GeminiBrain:
         return np.tanh(out)
 
     def get_genome(self) -> np.ndarray:
-        return np.concatenate(
-            [
-                self.w_steer1.ravel(),
-                self.b_steer,
-                self.w_throt1.ravel(),
-                self.b_throt,
-                self.w_steer2.ravel(),
-                self.w_throt2.ravel(),
-                self.w_skip.ravel(),
-                self.b_out,
-            ]
-        )
+        return np.concatenate([target.ravel() for _, target in self._targets()])
 
     def set_genome(self, genome: np.ndarray) -> None:
         if genome.size != self.genome_size:
             raise ValueError(f"Genome size {genome.size} does not match {self.genome_size}")
         offset = 0
-        targets = (
-            ("w_steer1", self.w_steer1),
-            ("b_steer", self.b_steer),
-            ("w_throt1", self.w_throt1),
-            ("b_throt", self.b_throt),
-            ("w_steer2", self.w_steer2),
-            ("w_throt2", self.w_throt2),
-            ("w_skip", self.w_skip),
-            ("b_out", self.b_out),
-        )
-        for name, target in targets:
+        for name, target in self._targets():
             setattr(self, name, genome[offset : offset + target.size].reshape(target.shape))
             offset += target.size
 

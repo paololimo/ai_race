@@ -82,7 +82,7 @@ def test_next_generation_keeps_population_size_and_elites() -> None:
 
 
 def test_track_start_is_on_road(track: Track) -> None:
-    assert track.is_on_road(*track.start_position())
+    assert track.is_on_road(*track.position_at_index(0))
     assert not track.is_on_road(1.0, 1.0)
     assert not track.is_on_road(-5.0, 10.0)
 

@@ -49,10 +49,14 @@ class MirrorBrain:
         # generation and this keeps it to two matmuls and no allocation.
         self._pair = np.empty((2, self.input_size), dtype=float)
 
+    def _targets(self) -> tuple[tuple[str, np.ndarray], ...]:
+        """The parameters, in genome order. The one place that order is written."""
+        return tuple((name, getattr(self, name)) for name in ("w1", "b1", "w2", "ws", "b2"))
+
     @property
     def genome_size(self) -> int:
         """Total learnable parameters. Never changes for a given `spec`."""
-        return self.w1.size + self.b1.size + self.w2.size + self.ws.size + self.b2.size
+        return sum(target.size for _, target in self._targets())
 
     def forward(self, inputs: np.ndarray) -> np.ndarray:
         """Sensors in, `[steering, throttle]` out, both within [-1, 1]."""
@@ -74,19 +78,15 @@ class MirrorBrain:
 
     def get_genome(self) -> np.ndarray:
         """Every parameter, flattened into one 1-D float array."""
-        return np.concatenate(
-            [self.w1.ravel(), self.b1, self.w2.ravel(), self.ws.ravel(), self.b2]
-        )
+        return np.concatenate([target.ravel() for _, target in self._targets()])
 
     def set_genome(self, genome: np.ndarray) -> None:
         """The exact inverse of `get_genome`."""
         if genome.size != self.genome_size:
             raise ValueError(f"Genome size {genome.size} does not match {self.genome_size}")
         offset = 0
-        for name in ("w1", "b1", "w2", "ws", "b2"):
-            target = getattr(self, name)
-            block = genome[offset : offset + target.size]
-            setattr(self, name, block.reshape(target.shape))
+        for name, target in self._targets():
+            setattr(self, name, genome[offset : offset + target.size].reshape(target.shape))
             offset += target.size
 
     def describe(self) -> Topology:

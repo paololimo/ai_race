@@ -223,6 +223,5 @@ class SimulationConfig:
     # Everything a comparison rests on lives here and is shared by every
     # entrant. What an entrant brings is only its architecture, in one file
     # under `src/brains/`.
-    track: TrackConfig = field(default_factory=TrackConfig)
     car: CarConfig = field(default_factory=CarConfig)
     genetic: GeneticConfig = field(default_factory=GeneticConfig)

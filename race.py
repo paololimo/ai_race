@@ -11,10 +11,9 @@ whichever files are in `src/brains/` and have a champion in `outputs/`.
 
 import argparse
 import logging
-import os
 
-from src.cli import add_common_arguments, build_config, setup_logging
-from src.simulation import Simulation, format_results
+from src.cli import add_common_arguments, build_simulation, setup_logging
+from src.simulation import format_results
 
 logger = logging.getLogger("race")
 
@@ -35,17 +34,8 @@ def main() -> None:
     setup_logging()
     args = parse_args()
     # A race is one lap of one circuit, so it is filmed whole — no clips, no
-    # cuts. Headless just means it is drawn without a window and encoded as
-    # fast as it draws.
-    recording_headless = args.headless and args.record is not None
-    if recording_headless:
-        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-    simulation = Simulation(
-        build_config(args),
-        render=not args.headless or recording_headless,
-        record=args.record,
-        throttle=not recording_headless,
-    )
+    # cuts, and none of train.py's clip flags.
+    simulation = build_simulation(args)
     track = simulation.tracks[args.track] if args.track is not None else None
     results = simulation.race(track)
     logger.info("Classification:\n%s", format_results(results))

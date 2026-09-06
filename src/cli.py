@@ -2,10 +2,18 @@
 
 import argparse
 import logging
+import os
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from src.config import SimulationConfig
+from src.simulation import Simulation
+
+
+def default_workers() -> int:
+    """Cores left over once the display and the operating system have theirs."""
+    return max(1, (os.cpu_count() or 2) - 2)
 
 
 def setup_logging() -> None:
@@ -21,21 +29,6 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="write an mp4 of the window (needs ffmpeg). Combine with --headless "
         "to record faster than real time: the frame rate cap is then lifted.",
-    )
-    parser.add_argument(
-        "--record-clip",
-        type=float,
-        default=None,
-        help="film only the first N seconds of each circuit, in one generation "
-        "in --record-every, instead of the whole run. Turns a 120-generation "
-        "run into minutes rather than hours, at the cost of cutting between "
-        "clips. Without it every frame is kept.",
-    )
-    parser.add_argument(
-        "--record-every",
-        type=int,
-        default=3,
-        help="with --record-clip: film one generation in N (default 3).",
     )
 
 
@@ -54,4 +47,26 @@ def build_config(args: argparse.Namespace) -> SimulationConfig:
             base.genetic,
             population_size=getattr(args, "population", base.genetic.population_size),
         ),
+    )
+
+
+def build_simulation(args: argparse.Namespace, **extra: Any) -> Simulation:
+    """Build the `Simulation` an entry point asked for.
+
+    Recording headless still needs everything drawn — just not shown. The dummy
+    video driver gives pygame a surface with no window on it, and with no window
+    there is no reason to hold sixty frames a second, so the recording takes as
+    long as the drawing does rather than as long as watching would have. That
+    one rule turns `--headless --record` into three constructor arguments, which
+    is why it is derived here rather than at each entry point.
+    """
+    recording_headless = args.headless and args.record is not None
+    if recording_headless:
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    return Simulation(
+        build_config(args),
+        render=not args.headless or recording_headless,
+        record=args.record,
+        throttle=not recording_headless,
+        **extra,
     )

@@ -26,10 +26,10 @@ import pygame
 
 from src import parallel
 from src.brains import BrainRef, Color, build_brain, color_of, entrants
-from src.car import Car, network_input_size
+from src.car import Car, build_car, network_input_size
 from src.config import SimulationConfig, race_track, track_variants
-from src.analysis import Analysis
-from src.dashboard import Dashboard, Entry, Series
+from src.analysis import Analysis, Series
+from src.dashboard import Dashboard, Entry
 from src.genetic import mutation_sigma, next_generation
 from src.recorder import Recorder
 from src.renderer import Layout, Renderer, fit_window
@@ -135,8 +135,9 @@ class Simulation:
         # Read from the configuration rather than from a built circuit, so a
         # run that never draws — a headless race, an ablation job — never pays
         # for the twelve tracks it is not going to use.
-        first = track_variants()[0]
-        size = (first.width, first.height)
+        variants = track_variants()
+        self._circuit_names = [c.name for c in variants]
+        size = (variants[0].width, variants[0].height)
         # The window is asked for more than a small screen has, and shrinks to
         # what this display actually offers rather than running off the edge.
         # A recording with no window on screen has no display to fit into, so
@@ -170,7 +171,6 @@ class Simulation:
         # does exactly the same thing at exactly the same cost.
         self._film_every = max(1, record_every)
         self._film_frames = int(record_clip * cfg.fps) if record_clip else None
-        self._film_all = record_clip is None
         # Without a window to watch there is no reason to hold 60 frames a
         # second, and holding it would make a recording take as long as the
         # training takes to watch.
@@ -264,14 +264,16 @@ class Simulation:
     def _car(
         self, stage: Stage, squad: Squad, genome: np.ndarray, start: Optional[int] = None
     ) -> Car:
-        # A dedicated generator, not the run's own: building a brain draws random
-        # weights that `set_genome` immediately overwrites, so those draws change
-        # nothing — but taking them from a shared stream would advance it, and
-        # then the starts and mutations that follow would depend on how many cars
-        # happened to be built. That is what made parallel runs diverge.
-        driver = build_brain(squad.brain, self.input_size, self._brain_rng)
-        driver.set_genome(genome)
-        return Car(stage.track, driver, self.cfg.car, stage.start if start is None else start)
+        """The same construction the pool workers do — see `car.build_car`."""
+        return build_car(
+            squad.brain,
+            genome,
+            stage.track,
+            self.cfg.car,
+            self.input_size,
+            self._brain_rng,
+            stage.start if start is None else start,
+        )
 
     def _drive(self, crew: Sequence[Tuple[Squad, Car]], stage: Stage, generation: int) -> bool:
         """Step the cars frame by frame, drawing them. False if the user quit.
@@ -323,7 +325,6 @@ class Simulation:
                     brain=leader.brain if leader else None,
                 )
             )
-        circuits = [c.name for c in track_variants()]
         series = [
             Series(s.name, s.color, s.history, s.spread, s.circuits) for s in self.squads
         ]
@@ -331,13 +332,13 @@ class Simulation:
             generation=generation,
             track_name=stage.track.cfg.name,
             track_number=stage.number + 1,
-            circuits=circuits,
+            circuit_count=len(self._circuit_names),
             frame=frame,
             max_frames=stage.budget,
             entries=entries,
         )
         strip = (
-            self.analysis.render(series, circuits, self._stats(generation))
+            self.analysis.render(series, self._circuit_names, self._stats(generation))
             if self.analysis
             else None
         )
@@ -358,7 +359,7 @@ class Simulation:
         compare one generation against another but means the video would never
         once show a trained car completing anything.
         """
-        if self._film_all or generation >= self.cfg.generations:
+        if self._film_frames is None or generation >= self.cfg.generations:
             return True
         return (generation - 1) % self._film_every == 0 and frame < self._film_frames
 
@@ -403,10 +404,10 @@ class Simulation:
 
         jobs = [
             parallel.Job(
-                (i, b), stage.number, stage.variant, stage.start, stage.budget, block, squad.brain
+                i, stage.number, stage.variant, stage.start, stage.budget, block, squad.brain
             )
             for i, squad in enumerate(self.squads)
-            for b, block in enumerate(parallel.split(squad.genomes, self.workers))
+            for block in parallel.split(squad.genomes, self.workers)
         ]
         pending = pool.map_async(parallel.evaluate, jobs)
         keep = True
@@ -421,7 +422,7 @@ class Simulation:
         # `map_async` hands the results back in job order, which is squad by
         # squad and block by block — the order the populations were cut in.
         scores: Dict[int, List[float]] = {i: [] for i in range(len(self.squads))}
-        for (squad_index, _), values in pending.get():
+        for squad_index, values in pending.get():
             scores[squad_index].extend(values)
         return scores, keep
 
@@ -546,7 +547,7 @@ class Simulation:
         The circuit is `gauntlet` unless told otherwise: nobody trained on it, so
         finishing it shows general driving rather than a memorised layout.
         """
-        self._film_all = True  # one lap of one circuit: nothing to leave out
+        self._film_frames = None  # one lap of one circuit: nothing to leave out
         circuit = track or Track(race_track())
         # The race is one fixed test: no island rotation, no random start.
         stage = Stage(circuit, 0, 0, None, self.frame_budget(circuit))

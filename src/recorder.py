@@ -5,11 +5,13 @@ one frame in twenty: the cars then jump a whole second between frames and the
 motion — which is the only thing worth watching — is gone. Compression has to
 come from leaving whole stretches out, not from thinning the ones kept.
 
-So the run is filmed in clips. Every few generations, the first seconds of each
-circuit are recorded at the full frame rate and played back at the same rate,
-so the driving inside a clip is exactly what it looked like; between clips the
-video cuts forward. The panel carries the generation number, so the cuts read
-as progress rather than as glitches.
+By default every drawn frame is kept: what most people mean by recording is a
+recording. `--record-clip` is the opt-in that compresses a long run, and it
+works by leaving whole generations out rather than by thinning frames — every
+few generations, the first seconds of each circuit are recorded at the full
+frame rate and played back at the same rate, so the driving inside a clip is
+exactly what it looked like; between clips the video cuts forward. The panel
+carries the generation number, so the cuts read as progress, not as glitches.
 
 Frames go straight down a pipe into ffmpeg. Writing them as PNGs first would be
 gigabytes on disk for a file that ends up a few dozen megabytes.

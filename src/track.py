@@ -21,10 +21,8 @@ logger = logging.getLogger(__name__)
 
 Point = Tuple[float, float]
 
-# Samples either side of the hint searched by `nearest_index`. Held as a module
-# constant so the window is allocated once rather than on every call.
+# Samples either side of the hint searched by `nearest_index`.
 _SEARCH_WINDOW = 25
-_OFFSETS = np.arange(-_SEARCH_WINDOW, _SEARCH_WINDOW + 1)
 
 
 def _chaikin(points: Sequence[Point], passes: int) -> List[Point]:
@@ -72,6 +70,11 @@ class Track:
         self.mask = self._build_mask(self.surface)
         self.clearance = self._build_clearance()
         self.clearance_flat = self._flat_clearance()
+        # Samples with the search window wrapped onto either end, so the hinted
+        # lookup below is a contiguous slice instead of a modulo and a gather.
+        self._wrapped = np.vstack(
+            [self.samples[-_SEARCH_WINDOW:], self.samples, self.samples[: _SEARCH_WINDOW + 1]]
+        )
 
     def _skeleton(self) -> List[Point]:
         """Corner points of the raw circuit, before smoothing."""
@@ -218,8 +221,7 @@ class Track:
         squares give the car hard edges to squeeze past rather than smooth arcs.
         """
         cx, cy = self.samples[index]
-        tx, ty = self.tangent_at_index(index)
-        heading = math.atan2(ty, tx)
+        heading = self.heading_at_index(index)
         available = self.road_width_at_index(index) - 2 * self.cfg.island_min_corridor
         if available < 12.0:
             return None
@@ -315,7 +317,9 @@ class Track:
         changes is the ray's position arithmetic, which becomes float64 instead
         of float32; over four thousand sampled casts not one reading moved.
         """
-        return array.array("d", self.clearance.ravel(order="C").tolist())
+        flat = array.array("d")
+        flat.frombytes(np.ascontiguousarray(self.clearance, dtype=np.float64).tobytes())
+        return flat
 
     def clearance_at(self, x: float, y: float) -> float:
         """Distance a ray may advance from here without leaving the road."""
@@ -353,26 +357,11 @@ class Track:
         if hint < 0:
             deltas = self.samples - np.array([x, y])
             return int(np.argmin(np.einsum("ij,ij->i", deltas, deltas)))
-        candidates = (hint + _OFFSETS) % len(self.samples)
-        points = self.samples[candidates]
+        points = self._wrapped[hint : hint + 2 * _SEARCH_WINDOW + 1]
         dx = points[:, 0] - x
         dy = points[:, 1] - y
-        return int(candidates[np.argmin(dx * dx + dy * dy)])
-
-    def road_extent_at_index(self, index: int) -> Tuple[float, float]:
-        """Measured distance to each road edge along the local normal."""
-        nx, ny = self.normal_at_index(index)
-        cx, cy = self.samples[index]
-        limit = self.cfg.road_width * (1.0 + self.cfg.width_variation)
-        extents = []
-        for sign in (-1.0, 1.0):
-            distance = 0.0
-            while distance < limit:
-                distance += 1.0
-                if not self.is_on_road(cx + nx * sign * distance, cy + ny * sign * distance):
-                    break
-            extents.append(distance)
-        return extents[0], extents[1]
+        offset = int(np.argmin(dx * dx + dy * dy)) - _SEARCH_WINDOW
+        return (hint + offset) % len(self.samples)
 
     def index_at_fraction(self, fraction: float) -> int:
         """Sample index at a given fraction of the way round the lap."""
@@ -398,11 +387,4 @@ class Track:
 
     def heading_at_index(self, index: int) -> float:
         tx, ty = self.tangent_at_index(index)
-        return math.atan2(ty, tx)
-
-    def start_position(self) -> Point:
-        return float(self.samples[0][0]), float(self.samples[0][1])
-
-    def start_angle(self) -> float:
-        tx, ty = self.tangent_at_index(0)
         return math.atan2(ty, tx)

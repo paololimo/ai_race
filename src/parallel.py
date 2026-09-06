@@ -13,18 +13,28 @@ therefore reproduce serial ones exactly, which the tests check.
 
 import os
 from dataclasses import dataclass, replace
-from typing import Dict, Hashable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from src.brains import BrainRef, build_brain
-from src.car import Car, network_input_size
+from src.brains import BrainRef
+from src.car import build_car, network_input_size
 from src.config import SimulationConfig, track_variants
 from src.track import Track
 
-# Per-process state: circuits are expensive to build, so each worker builds them
-# once and keeps them for the life of the pool.
-_STATE: Dict[str, object] = {}
+
+@dataclass(frozen=True)
+class _Worker:
+    """What a worker process sets up once and reuses for the life of the pool."""
+
+    cfg: SimulationConfig
+    circuits: List[List[Track]]
+    rng: np.random.Generator
+    inputs: int
+
+
+# Circuits are expensive to build, so each worker builds them once and keeps them.
+_WORKER: Optional[_Worker] = None
 
 
 @dataclass(frozen=True)
@@ -35,12 +45,12 @@ class Job:
     anything a worker re-derives: the drawn cars and the pooled cars have to be
     driven over the same horizon for their scores to mean the same thing.
 
-    `chunk_id` is handed back untouched, so it can be whatever the caller needs
-    to reassemble its results — (squad, block) when several populations are
-    scored in the same pass.
+    `squad` is handed back untouched so the caller can reassemble its results;
+    the pool preserves job order, so the blocks of one population arrive in the
+    order they were cut in.
     """
 
-    chunk_id: Hashable
+    squad: int
     track_number: int
     variant: int
     start_index: Optional[int]
@@ -72,37 +82,38 @@ def build_circuits(cfg: SimulationConfig) -> List[List[Track]]:
 
 
 def worker_init(cfg: SimulationConfig) -> None:
+    global _WORKER
     os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
     import pygame
 
     pygame.init()
-    _STATE["cfg"] = cfg
-    _STATE["circuits"] = build_circuits(cfg)
-    _STATE["rng"] = np.random.default_rng(0)
-    _STATE["inputs"] = network_input_size(cfg.car)
+    _WORKER = _Worker(cfg, build_circuits(cfg), np.random.default_rng(0), network_input_size(cfg.car))
 
 
-def evaluate(job: Job) -> Tuple[Hashable, List[float]]:
+def evaluate(job: Job) -> Tuple[int, List[float]]:
     """Drive one block of genomes on one circuit; return their lap scores."""
-    cfg: SimulationConfig = _STATE["cfg"]  # type: ignore[assignment]
-    circuits: Sequence[Sequence[Track]] = _STATE["circuits"]  # type: ignore[assignment]
-    rng: np.random.Generator = _STATE["rng"]  # type: ignore[assignment]
-    inputs: int = _STATE["inputs"]  # type: ignore[assignment]
+    assert _WORKER is not None, "evaluate() runs in a pool started by worker_init"
+    track = _WORKER.circuits[job.track_number][job.variant]
 
-    track = circuits[job.track_number][job.variant]
-
-    cars = []
-    for genome in job.genomes:
-        driver = build_brain(job.brain, inputs, rng)
-        driver.set_genome(genome)
-        cars.append(Car(track, driver, cfg.car, job.start_index))
+    cars = [
+        build_car(
+            job.brain,
+            genome,
+            track,
+            _WORKER.cfg.car,
+            _WORKER.inputs,
+            _WORKER.rng,
+            job.start_index,
+        )
+        for genome in job.genomes
+    ]
 
     for _ in range(job.budget):
         for car in cars:
             car.update()
         if not any(car.alive for car in cars):
             break
-    return job.chunk_id, [car.fitness / track.lap_length for car in cars]
+    return job.squad, [car.fitness / track.lap_length for car in cars]
 
 
 BLOCKS_PER_WORKER = 3

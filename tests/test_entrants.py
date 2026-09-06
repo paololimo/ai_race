@@ -19,6 +19,23 @@ from src.simulation import Simulation
 INPUTS = network_input_size(SimulationConfig().car)
 
 
+def topology_problems(name: str, topology) -> list:
+    """Every way this description fails to match the weights it describes.
+
+    Returned rather than asserted so a caller checking the whole grid can report
+    all the entrants at fault in one go instead of stopping at the first.
+    """
+    problems = []
+    if not topology.layers:
+        problems.append(f"{name}: described no layers")
+    for source, target, weights in topology.edges:
+        shape = np.asarray(weights).shape
+        expected = (topology.layers[source][1], topology.layers[target][1])
+        if shape != expected:
+            problems.append(f"{name}: edge {source}->{target} is {shape}, not {expected}")
+    return problems
+
+
 def config(tmp_path, **overrides) -> SimulationConfig:
     base = SimulationConfig()
     return replace(
@@ -81,14 +98,7 @@ def test_every_entrant_can_be_drawn() -> None:
         if not callable(describe):
             missing.append(name)
             continue
-        topology = describe()
-        if not topology.layers:
-            wrong.append(f"{name}: described no layers")
-        for source, target, weights in topology.edges:
-            shape = np.asarray(weights).shape
-            expected = (topology.layers[source][1], topology.layers[target][1])
-            if shape != expected:
-                wrong.append(f"{name}: edge {source}->{target} is {shape}, not {expected}")
+        wrong.extend(topology_problems(name, describe()))
 
     assert not missing, f"no describe(): {', '.join(missing)}"
     assert not wrong, "; ".join(wrong)
@@ -283,8 +293,8 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
     """
     import pygame
 
-    from src.analysis import Analysis
-    from src.dashboard import Dashboard, Entry, Series
+    from src.analysis import Analysis, Series
+    from src.dashboard import Dashboard, Entry
 
     pygame.init()
     described, measured = 0, 0
@@ -293,12 +303,7 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
     for name in entrants():
         brain = build_brain(BrainRef(name), INPUTS, rng)
         if callable(getattr(brain, "describe", None)):
-            topology = brain.describe()
-            assert topology.layers, f"{name} described no layers"
-            for source, target, weights in topology.edges:
-                rows, cols = np.asarray(weights).shape
-                assert rows == topology.layers[source][1], f"{name}: edge misses its source"
-                assert cols == topology.layers[target][1], f"{name}: edge misses its target"
+            assert not topology_problems(name, brain.describe())
             described += 1
         else:
             measured += 1
@@ -307,8 +312,8 @@ def test_the_panel_draws_every_entrant(tmp_path) -> None:
     assert described + measured == len(entrants())
     circuits = ["serpentine", "grid-city", "speedway"]
     panel = Dashboard(380, 700, INPUTS).render(
-        generation=1, track_name="serpentine", track_number=1, circuits=circuits,
-        frame=1, max_frames=100, entries=entries,
+        generation=1, track_name="serpentine", track_number=1,
+        circuit_count=len(circuits), frame=1, max_frames=100, entries=entries,
     )
     assert panel.get_size() == (380, 700)
 
@@ -380,7 +385,6 @@ def test_a_brain_that_cannot_be_drawn_does_not_take_the_window_down() -> None:
     entries = [Entry("wreck", (200, 0, 0), 0.0, 1, 1, 0.0, 1, Exploding())]
     surface = panel.render(
         generation=1, track_name="serpentine", track_number=1,
-        circuits=["serpentine", "grid-city", "speedway"],
-        frame=1, max_frames=100, entries=entries,
+        circuit_count=3, frame=1, max_frames=100, entries=entries,
     )
     assert surface.get_size() == (380, 700)

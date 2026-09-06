@@ -5,12 +5,27 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from src.brains import Brain
+from src.brains import Brain, BrainRef, build_brain
 from src.config import CarConfig
 from src.track import Track
 
 _HIT_THRESHOLD = 1.0  # clearance at or below this counts as the verge
 _MIN_STEP = 1.0
+
+
+def _sensor_fan(cfg: CarConfig) -> Tuple[float, Tuple[float, ...]]:
+    """The fixed ray fan: a half-spread offset and one step per ray.
+
+    Kept in the two pieces the caller adds to its heading, rather than folded
+    into a single offset, so the arithmetic stays `heading - half + step` — the
+    same association, and so the same floats, as evaluating it inline.
+    """
+    n = cfg.num_sensors
+    if n == 1:
+        return 0.0, (0.0,)
+    spread = math.radians(cfg.sensor_spread)
+    step = spread / (n - 1)
+    return spread / 2, tuple(i * step for i in range(n))
 
 
 def network_input_size(cfg: CarConfig) -> int:
@@ -36,12 +51,9 @@ class Car:
         self.cfg = cfg
         self.track = track
         self.brain = brain
-        if start_index is None:
-            self.x, self.y = track.start_position()
-            self.angle = track.start_angle()
-        else:
-            self.x, self.y = track.position_at_index(start_index)
-            self.angle = track.heading_at_index(start_index)
+        index = 0 if start_index is None else start_index
+        self.x, self.y = track.position_at_index(index)
+        self.angle = track.heading_at_index(index)
         self.speed = 0.0
         self.alive = True
         self.frames = 0
@@ -50,6 +62,13 @@ class Car:
         self.progress = 0.0  # distance travelled along the centreline, in pixels
         self.wall_readings: List[float] = [1.0] * cfg.num_sensors
         self.sensor_endpoints: List[Tuple[float, float]] = []
+        # Bound once: the ray marcher below reads these on every step of every
+        # ray, and at that volume the attribute chains cost more than the
+        # arithmetic. Nothing here changes over a car's lifetime.
+        self._field = track.clearance_flat
+        self._width, self._height = track.cfg.width, track.cfg.height
+        self._reach = cfg.sensor_range
+        self._half_spread, self._ray_steps = _sensor_fan(cfg)
 
     @property
     def fitness(self) -> float:
@@ -60,14 +79,6 @@ class Car:
     def laps(self) -> float:
         return self.progress / self.track.lap_length
 
-    def _sensor_angles(self) -> List[float]:
-        spread = math.radians(self.cfg.sensor_spread)
-        n = self.cfg.num_sensors
-        if n == 1:
-            return [self.angle]
-        step = spread / (n - 1)
-        return [self.angle - spread / 2 + i * step for i in range(n)]
-
     def _cast_wall_ray(self, dx: float, dy: float) -> Tuple[float, Tuple[float, float]]:
         """Sphere-trace a ray to the verge; return the distance and the hit point.
 
@@ -77,7 +88,6 @@ class Car:
         where marching took dozens; near a wall the clearance shrinks and the
         steps become fine again, so precision is kept exactly where it matters.
         """
-        reach = self.cfg.sensor_range
         # Local names and a flat array: this loop runs millions of times per
         # generation, and at that volume the attribute lookups and the function
         # call cost more than the arithmetic inside it. The clearance field is
@@ -86,8 +96,8 @@ class Car:
         # float32 scalar and turns every comparison and addition that follows
         # into numpy arithmetic on a zero-dimensional object, which measured 2.3
         # times the cost of the same loop over machine floats.
-        field = self.track.clearance_flat
-        width, height = self.track.cfg.width, self.track.cfg.height
+        reach = self._reach
+        field, width, height = self._field, self._width, self._height
         x, y = self.x, self.y
 
         distance = 0.0
@@ -109,9 +119,11 @@ class Car:
         walls: List[float] = []
         endpoints: List[Tuple[float, float]] = []
 
-        for angle in self._sensor_angles():
+        heading = self.angle - self._half_spread
+        for ray_step in self._ray_steps:
+            angle = heading + ray_step
             distance, endpoint = self._cast_wall_ray(math.cos(angle), math.sin(angle))
-            walls.append(distance / self.cfg.sensor_range)
+            walls.append(distance / self._reach)
             # Back to Python floats. The clearance field is float32, so a ray
             # that took at least one step from it returns float32 coordinates,
             # which pygame refuses to draw — and only some rays do, which is why
@@ -169,3 +181,24 @@ class Car:
             self.alive = False
         else:
             self._update_idle()
+
+
+def build_car(
+    ref: BrainRef,
+    genome: np.ndarray,
+    track: Track,
+    cfg: CarConfig,
+    input_size: int,
+    rng: np.random.Generator,
+    start_index: Optional[int],
+) -> Car:
+    """Put one genome on the grid.
+
+    The serial path and the pooled workers both need this, and the guarantee
+    that a parallel run reproduces a serial one exactly rests on them doing it
+    the same way — including the dedicated `rng`, whose draws `set_genome`
+    immediately overwrites but which must not come from a shared stream.
+    """
+    driver = build_brain(ref, input_size, rng)
+    driver.set_genome(genome)
+    return Car(track, driver, cfg, start_index)

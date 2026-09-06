@@ -14,16 +14,9 @@ import numpy as np
 import pygame
 
 from src.brains import Brain, Color
+from src.theme import ACCENT, BG, CARD, MUTED, NEGATIVE, POSITIVE, TEXT, tint
 
 logger = logging.getLogger(__name__)
-
-BG = (18, 20, 32)
-CARD = (28, 31, 48)
-TEXT = (232, 234, 245)
-MUTED = (140, 146, 170)
-ACCENT = (255, 176, 60)
-POSITIVE = (110, 220, 150)
-NEGATIVE = (235, 100, 110)
 
 # Where the brain diagram starts, leaving the three rows of text their width.
 _TEXT_COLUMN = 194
@@ -48,22 +41,6 @@ class Entry:
     brain: Optional[Brain] = None
 
 
-@dataclass(frozen=True)
-class Series:
-    """One entrant's history, for the analyses."""
-
-    name: str
-    color: Color
-    # Best fitness in each generation. Not a progress curve on its own: every
-    # generation draws a fresh start point and a different island layout, so
-    # even an untouched elite scores differently from one to the next.
-    best: Sequence[float]
-    # Mean per-gene standard deviation of the population, per generation.
-    spread: Sequence[float]
-    # Best score on each circuit, this generation.
-    circuits: Sequence[float]
-
-
 def response(brain: Brain, input_size: int) -> np.ndarray:
     """How much each input moves each output: an `input_size` x 2 array.
 
@@ -81,11 +58,6 @@ def response(brain: Brain, input_size: int) -> np.ndarray:
         probe[i] += _PROBE_STEP
         jacobian[i] = (np.asarray(brain.forward(probe), dtype=float) - at_rest) / _PROBE_STEP
     return jacobian
-
-
-def tint(color: Color, strength: float) -> Color:
-    """`color` faded towards the card background by `strength` in [0, 1]."""
-    return tuple(int(CARD[k] + (color[k] - CARD[k]) * strength) for k in range(3))
 
 
 class Dashboard:
@@ -271,7 +243,7 @@ class Dashboard:
         """Share the space between the cards, whatever is left after the stats."""
         return int(np.clip(room / max(1, count) - 8, 46, 190))
 
-    def _entries(self, y: int, entries: Sequence[Entry], card_height: int) -> int:
+    def _entries(self, y: int, entries: Sequence[Entry], card_height: int) -> None:
         """One card per entrant: the standing on the left, its brain beside it.
 
         Beside, not underneath. The nodes of a network are laid out down the
@@ -303,7 +275,6 @@ class Dashboard:
                 inner = (width, card_height - 16)
                 self.surface.blit(self._cached_diagram(entry.brain, inner), (_TEXT_COLUMN, y + 8))
             y += card_height + 8
-        return y
 
     # -- assembly ------------------------------------------------------------
 
@@ -312,7 +283,7 @@ class Dashboard:
         generation: int,
         track_name: str,
         track_number: int,
-        circuits: Sequence[str],
+        circuit_count: int,
         frame: int,
         max_frames: int,
         entries: Sequence[Entry],
@@ -325,7 +296,7 @@ class Dashboard:
         """
         self.surface.fill(BG)
         top = self._header(
-            generation, track_name, track_number, len(circuits), frame, max_frames
+            generation, track_name, track_number, circuit_count, frame, max_frames
         )
         self._entries(
             top + 2, entries, self._card_height(self.height - top - 16, len(entries))

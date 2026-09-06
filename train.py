@@ -11,10 +11,8 @@ in the next run with no change here. Each champion is written to
 """
 
 import argparse
-import os
 
-from src.cli import add_common_arguments, build_config, setup_logging
-from src.simulation import Simulation
+from src.cli import add_common_arguments, build_simulation, default_workers, setup_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,8 +28,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workers",
         type=int,
-        default=max(1, (os.cpu_count() or 2) - 2),
+        default=default_workers(),
         help="processes used for scoring (default: cores - 2)",
+    )
+    parser.add_argument(
+        "--record-clip",
+        type=float,
+        default=None,
+        help="film only the first N seconds of each circuit, in one generation "
+        "in --record-every, instead of the whole run. Turns a 120-generation "
+        "run into minutes rather than hours, at the cost of cutting between "
+        "clips. Without it every frame is kept.",
+    )
+    parser.add_argument(
+        "--record-every",
+        type=int,
+        default=3,
+        help="with --record-clip: film one generation in N (default 3).",
     )
     add_common_arguments(parser)
     return parser.parse_args()
@@ -40,23 +53,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     setup_logging()
     args = parse_args()
-    # Recording headless still needs everything drawn — just not shown. The
-    # dummy video driver gives pygame a surface with no window on it, and with
-    # no window there is no reason to hold sixty frames a second, so the
-    # recording takes as long as the drawing does rather than as long as
-    # watching would have.
-    recording_headless = args.headless and args.record is not None
-    if recording_headless:
-        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-    simulation = Simulation(
-        build_config(args),
-        render=not args.headless or recording_headless,
+    simulation = build_simulation(
+        args,
         workers=args.workers,
         shown=args.shown,
-        record=args.record,
         record_every=args.record_every,
         record_clip=args.record_clip,
-        throttle=not recording_headless,
     )
     simulation.train()
 

@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.brains import BrainRef, build_brain  # noqa: E402
 from src.brains.paololimo import NetworkConfig, spec_from_config  # noqa: E402
 from src.car import network_input_size  # noqa: E402
+from src.cli import default_workers  # noqa: E402
 from src.config import SimulationConfig  # noqa: E402
 from src.simulation import Simulation  # noqa: E402
 
@@ -208,7 +209,7 @@ def main() -> None:
     parser.add_argument(
         "--workers",
         type=int,
-        default=max(1, (os.cpu_count() or 2) - 2),
+        default=default_workers(),
         help="parallel processes (default: cores - 2, leaving room for the rest)",
     )
     args = parser.parse_args()
@@ -230,7 +231,9 @@ def main() -> None:
     # Every print here is flushed. This runs for an hour or more, often with its
     # output redirected to a file, and a buffered header is indistinguishable
     # from a job that never started.
-    say = lambda line: print(line, flush=True)  # noqa: E731
+    def say(line: str) -> None:
+        print(line, flush=True)
+
     say(
         f"{', '.join(chosen)}: {len(selected)} variants x {args.seeds} seeds x "
         f"{args.generations} generations, population {args.population}"

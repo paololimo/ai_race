@@ -23,13 +23,30 @@ circuits and stuck on the third is a different problem from one uniformly slow,
 and a single fitness number cannot tell them apart.
 """
 
+from dataclasses import dataclass
 from typing import List, Sequence, Tuple
 
 import numpy as np
 import pygame
 
 from src.brains import Color
-from src.dashboard import BG, CARD, MUTED, TEXT, Series, tint
+from src.theme import BG, CARD, MUTED, TEXT, tint
+
+
+@dataclass(frozen=True)
+class Series:
+    """One entrant's history, for the analyses."""
+
+    name: str
+    color: Color
+    # Best fitness in each generation. Not a progress curve on its own: every
+    # generation draws a fresh start point and a different island layout, so
+    # even an untouched elite scores differently from one to the next.
+    best: Sequence[float]
+    # Mean per-gene standard deviation of the population, per generation.
+    spread: Sequence[float]
+    # Best score on each circuit, this generation.
+    circuits: Sequence[float]
 
 
 class Analysis:
@@ -183,8 +200,10 @@ class Analysis:
         gap = 10
         # The run stats are a narrow column of text; the three charts share the
         # rest of the width equally.
-        run = 210 if stats else 0
-        width = (self.width - gap * (4 if not stats else 5) - run) // 3
+        # Folded into one branch: with no stats column the width its gap would
+        # have taken goes back to the charts, which is what `-gap` says.
+        run = 210 if stats else -gap
+        width = (self.width - gap * 5 - run) // 3
         self._progress(gap, width, series)
         self._spread(gap * 2 + width, width, series)
         self._circuits(gap * 3 + width * 2, width, series, circuits)
@@ -193,4 +212,4 @@ class Analysis:
         return self.surface
 
 
-__all__ = ["Analysis"]
+__all__ = ["Analysis", "Series"]
