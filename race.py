@@ -1,6 +1,7 @@
 """Put every champion on the grid together, on the circuit none of them saw.
 
     python race.py                        # the race, on `gauntlet`
+    python race.py --laps 5               # a longer race
     python race.py --track 1              # the same grid on a training circuit
     python race.py --headless --record outputs/race.mp4
 
@@ -21,6 +22,13 @@ logger = logging.getLogger("race")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Race every champion together")
     parser.add_argument(
+        "--laps",
+        type=float,
+        default=3.0,
+        help="laps to race (default 3). First past this distance wins; anyone "
+        "who never gets there is placed behind the finishers, by distance.",
+    )
+    parser.add_argument(
         "--track",
         type=int,
         default=None,
@@ -37,7 +45,7 @@ def main() -> None:
     # cuts, and none of train.py's clip flags.
     simulation = build_simulation(args)
     track = simulation.tracks[args.track] if args.track is not None else None
-    results = simulation.race(track)
+    results = simulation.race(track, laps=args.laps)
     logger.info("Classification:\n%s", format_results(results))
 
 

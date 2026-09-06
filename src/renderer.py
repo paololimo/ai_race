@@ -107,6 +107,7 @@ class Renderer:
         # the way out. Scaling the coordinates instead would mean scaling every
         # car, every sensor ray and the start line, in three separate places.
         self.view = pygame.Surface(track_size)
+        self.banner_font = pygame.font.SysFont("menlo,monospace", 190, bold=True)
         pygame.display.set_caption("cars_ai - evolutionary self-driving cars")
         self.clock = pygame.time.Clock()
 
@@ -157,6 +158,28 @@ class Renderer:
         if leader is not None:
             for endpoint in leader.sensor_endpoints:
                 pygame.draw.line(self.view, _SENSOR_COLOR, (leader.x, leader.y), endpoint, 1)
+
+    def banner(self, text: str, colour: Tuple[int, int, int], beat: float) -> None:
+        """A countdown numeral over the circuit, drawn onto the view.
+
+        `beat` runs 0 to 1 through the number's turn: it starts oversized and
+        settles, and fades out at the end, so a still frame of the video always
+        shows a legible number rather than something caught mid-transition.
+        """
+        glyph = self.banner_font.render(text, True, colour)
+        scale = 1.35 - 0.35 * min(1.0, beat * 3.0)
+        fade = 1.0 if beat < 0.7 else max(0.0, 1.0 - (beat - 0.7) / 0.3)
+        size = (max(1, int(glyph.get_width() * scale)), max(1, int(glyph.get_height() * scale)))
+        glyph = pygame.transform.smoothscale(glyph, size)
+        glyph.set_alpha(int(255 * fade))
+
+        # A dark disc behind it: the circuits are light green, blue and red, and
+        # a numeral in any one colour is unreadable on at least one of them.
+        centre = (self.track_size[0] // 2, self.track_size[1] // 2)
+        shade = pygame.Surface((size[0] + 150, size[1] + 90), pygame.SRCALPHA)
+        pygame.draw.ellipse(shade, (10, 11, 18, int(150 * fade)), shade.get_rect())
+        self.view.blit(shade, shade.get_rect(center=centre))
+        self.view.blit(glyph, glyph.get_rect(center=centre))
 
     def present(
         self,

@@ -68,6 +68,7 @@ python train.py --shown 20                     # draw more cars per entrant
 python train.py --headless --record run.mp4    # every frame, ~70 min of video
 python train.py --headless --record run.mp4 --record-clip 3   # ~6 min instead
 python race.py --headless --record race.mp4    # the race, filmed whole
+python race.py --laps 5                        # a longer race
 python race.py                                 # the race, on the unseen circuit
 python race.py --track 1                       # the same grid on a training circuit
 python -m pytest tests -q                      # tests
@@ -360,11 +361,20 @@ Everything grows by itself when an entrant is added.
 
 ## The race
 
-Every champion goes onto `gauntlet` together, one colour each, with the
-classification written to the log. Cars have no collision with one another — the
-physics never modelled it — so they are spaced 26 px apart on the grid purely to
-stay visible; distance is measured from each car's own start, so the stagger
-costs nobody progress, but it does mean they meet each corner a few frames apart.
+Every champion goes onto `gauntlet` together, one colour each, after a three
+second countdown. **First past three laps wins** (`--laps N`); anyone who never
+gets there is placed behind the finishers, by distance. Ranking by distance
+covered in a fixed number of frames — which is what this used to do — picks the
+same winner as a real race only while nobody crashes, and that is not the usual
+case. A car that crosses the line parks, so second and third get a time of their
+own rather than being frozen wherever the winner left them.
+
+Cars have no collision with one another, the physics never modelled it, so the
+grid is drawn **across** the carriageway: every car starts on the same point of
+the lap, side by side. Spacing them 26 px apart *along* the lap was fair —
+distance is counted from each car's own start — but it made the picture lie. A
+car 72 px further back could be leading on distance while looking third on
+screen, which is no use in a race that exists to be watched.
 
 ## Moving hazards, and why there are none
 

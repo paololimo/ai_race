@@ -24,7 +24,7 @@ and a single fitness number cannot tell them apart.
 """
 
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import pygame
@@ -190,14 +190,48 @@ class Analysis:
             self._text(label, plot.x, row, MUTED)
             self._text(value, plot.x + 96, row, TEXT)
 
+    def _order(
+        self, x: int, width: int, order: Sequence[Tuple[str, Color, float, bool]], target: float
+    ) -> None:
+        """The running order of a race, against the distance that ends it.
+
+        A race has no history to plot — the three training charts would all say
+        "collecting..." for its whole twenty seconds — and it has something
+        better to show: who is where, and how far from the flag.
+        """
+        plot = self._panel(x, width, "RACE ORDER", f"first to {target:.0f} laps")
+        row = plot.height / max(1, len(order))
+        left, span = plot.x + 132, plot.width - 132 - 54
+        for i, (name, color, laps, alive) in enumerate(order):
+            top = int(plot.y + row * i + row / 2 - 9)
+            self._text(f"{i + 1}.", plot.x, top + 2, MUTED)
+            self._text(name[:12], plot.x + 22, top + 2, color)
+            pygame.draw.rect(self.surface, BG, (left, top + 4, span, 9), border_radius=4)
+            pygame.draw.rect(
+                self.surface,
+                color if alive else tint(color, 0.35),
+                (left, top + 4, max(2, int(span * min(1.0, laps / target))), 9),
+                border_radius=4,
+            )
+            self._text(f"{laps:.2f}" if alive else f"{laps:.2f} out",
+                       left + span + 8, top + 1, MUTED if alive else tint(color, 0.7))
+
     def render(
         self,
         series: Sequence[Series],
         circuits: Sequence[str],
         stats: Sequence[Tuple[str, str]] = (),
+        order: Optional[Sequence[Tuple[str, Color, float, bool]]] = None,
+        target: float = 0.0,
     ) -> pygame.Surface:
         self.surface.fill(BG)
         gap = 10
+        if order is not None:
+            run = 210 if stats else 0
+            self._order(gap, self.width - gap * (2 if not stats else 3) - run, order, target)
+            if stats:
+                self._run(self.width - gap - run, run, stats)
+            return self.surface
         # The run stats are a narrow column of text; the three charts share the
         # rest of the width equally.
         # Folded into one branch: with no stats column the width its gap would

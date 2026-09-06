@@ -13,8 +13,9 @@ import pytest
 
 from src.brains import BRAIN_FACTORY, Brain, BrainRef, build_brain, color_of, entrants
 from src.car import network_input_size
-from src.config import SimulationConfig
-from src.simulation import Simulation
+from src.config import SimulationConfig, race_track
+from src.simulation import Simulation, format_results
+from src.track import Track
 
 INPUTS = network_input_size(SimulationConfig().car)
 
@@ -228,6 +229,73 @@ def test_training_then_racing_is_the_whole_loop(tmp_path) -> None:
     results = day.race()
     assert {name for name, *_ in results} == {s.name for s in day.squads}
     assert results == sorted(results, key=lambda r: r[1], reverse=True)
+
+
+def test_the_race_is_decided_at_the_flag_not_at_the_clock(tmp_path) -> None:
+    """First past the distance wins, and everyone else still gets a time.
+
+    Ranking by distance covered in a fixed number of frames picks the same
+    winner as a real race only while nobody crashes, which is not the usual
+    case. And stopping the clock when the winner crosses froze the rest
+    wherever they happened to be — a car a hundredth of a lap behind was
+    reported as "still running" rather than as second.
+    """
+    simulation = Simulation(config(tmp_path), render=False)
+    simulation.train()
+    simulation.save_all()
+
+    # Two generations of training on six genomes does not get far, so the flag
+    # is set where these cars can actually reach it.
+    results = Simulation(config(tmp_path), render=False).race(laps=0.02)
+    finishers = [r for r in results if r[4] is not None]
+    assert finishers, "nobody reached the flag"
+    assert all(r[1] >= 0.02 for r in finishers)
+
+    # Finishers first, in the order they crossed; the rest behind, by distance.
+    assert results[: len(finishers)] == finishers
+    assert [r[4] for r in finishers] == sorted(r[4] for r in finishers)
+    assert [r[1] for r in results[len(finishers) :]] == sorted(
+        (r[1] for r in results[len(finishers) :]), reverse=True
+    )
+    # A finisher has stopped: it parks on the line rather than driving on.
+    assert all(not r[2] for r in finishers)
+    assert "WINNER" in format_results(results)
+
+
+def test_the_grid_is_across_the_road_not_along_it(tmp_path) -> None:
+    """Every car starts at the same point on the lap, side by side.
+
+    Staggering them along the centreline was fair — distance is measured from
+    each car's own start — but it made the picture lie: a car 72 px further
+    back could be ahead on distance covered while looking behind on screen,
+    which is no use in a race that exists to be watched.
+    """
+    simulation = Simulation(config(tmp_path), render=False)
+    simulation.train()
+    simulation.save_all()
+
+    raced = Simulation(config(tmp_path), render=False)
+    circuit = Track(race_track())
+    cars = []
+    original = raced._drive
+    raced._drive = lambda crew, *a, **k: cars.extend(c for _, c in crew) or True
+    raced.race(circuit)
+    raced._drive = original
+
+    assert len(cars) > 1
+    # Side by side, not one behind another: every pair is within a road width
+    # of every other, where the old stagger put 72 px between first and last
+    # along the lap. (Their nearest centreline index still differs by a sample
+    # or two — projecting an offset point onto a curve does that — but no car
+    # is given ground, since progress is counted from wherever it started.)
+    width = circuit.road_width_at_index(0)
+    assert all(
+        np.hypot(a.x - b.x, a.y - b.y) <= width for a in cars for b in cars
+    ), "the grid is not abreast"
+    # Distinct slots, and every one of them on the road.
+    assert len({(round(c.x, 3), round(c.y, 3)) for c in cars}) == len(cars)
+    assert all(circuit.is_on_road(c.x, c.y) for c in cars)
+    assert all(c.progress == 0.0 for c in cars)
 
 
 def test_racing_without_champions_says_so(tmp_path) -> None:

@@ -37,7 +37,13 @@ from src.track import Track
 
 logger = logging.getLogger(__name__)
 
-Result = Tuple[str, float, bool, int]  # entrant, laps, still running, frames
+# entrant, laps, still running at the end, frames driven, frame it finished on
+# (None if it never did). Ranking is finishers by time, then the rest by laps.
+Result = Tuple[str, float, bool, int, Optional[int]]
+
+# The countdown: what is shown, and for how many frames each.
+_COUNTDOWN: Tuple[Tuple[str, int], ...] = (("3", 45), ("2", 45), ("1", 45), ("GO", 40))
+_FLAG = (255, 210, 90)
 
 
 def _clock(seconds: float) -> str:
@@ -175,6 +181,8 @@ class Simulation:
         # second, and holding it would make a recording take as long as the
         # training takes to watch.
         self._throttle = throttle
+        self._racing = False  # a race shows a running order, not a search
+        self._race_laps = 0.0
         self._started = time.monotonic()
         # How long each finished generation took. The estimate must not be
         # divided by the generation in progress: within one, the elapsed time
@@ -262,7 +270,12 @@ class Simulation:
         return Stage(track, number, variant, start, self.frame_budget(track))
 
     def _car(
-        self, stage: Stage, squad: Squad, genome: np.ndarray, start: Optional[int] = None
+        self,
+        stage: Stage,
+        squad: Squad,
+        genome: np.ndarray,
+        start: Optional[int] = None,
+        lateral: float = 0.0,
     ) -> Car:
         """The same construction the pool workers do — see `car.build_car`."""
         return build_car(
@@ -273,9 +286,15 @@ class Simulation:
             self.input_size,
             self._brain_rng,
             stage.start if start is None else start,
+            lateral,
         )
 
-    def _drive(self, crew: Sequence[Tuple[Squad, Car]], stage: Stage, generation: int) -> bool:
+    def _drive(
+        self,
+        crew: Sequence[Tuple[Squad, Car]],
+        stage: Stage,
+        generation: int,
+    ) -> bool:
         """Step the cars frame by frame, drawing them. False if the user quit.
 
         Each car is carried with the squad that entered it, which is what the
@@ -297,7 +316,12 @@ class Simulation:
         return True
 
     def _draw(
-        self, crew: Sequence[Tuple[Squad, Car]], stage: Stage, generation: int, frame: int
+        self,
+        crew: Sequence[Tuple[Squad, Car]],
+        stage: Stage,
+        generation: int,
+        frame: int,
+        banner: Optional[Tuple[str, float]] = None,
     ) -> None:
         assert self.renderer is not None and self.dashboard is not None
         self.renderer.draw_track(
@@ -306,6 +330,8 @@ class Simulation:
             [squad.color for squad, _ in crew],
             start_index=stage.start or 0,
         )
+        if banner is not None:
+            self.renderer.banner(banner[0], _FLAG, banner[1])
         entries = []
         for squad in self.squads:
             mine = [car for owner, car in crew if owner is squad]
@@ -337,8 +363,21 @@ class Simulation:
             max_frames=stage.budget,
             entries=entries,
         )
+        # In a race the three training charts have no history to draw and would
+        # all read "collecting..." for its whole twenty seconds. The running
+        # order is what a race has to show instead.
+        order = (
+            sorted(
+                ((e.name, e.color, e.laps, e.alive > 0) for e in entries),
+                key=lambda row: -row[2],
+            )
+            if self._racing
+            else None
+        )
         strip = (
-            self.analysis.render(series, self._circuit_names, self._stats(generation))
+            self.analysis.render(
+                series, self._circuit_names, self._stats(generation), order, self._race_laps
+            )
             if self.analysis
             else None
         )
@@ -363,6 +402,23 @@ class Simulation:
             return True
         return (generation - 1) % self._film_every == 0 and frame < self._film_frames
 
+    def _countdown(self, crew: Sequence[Tuple[Squad, Car]], stage: Stage) -> bool:
+        """Hold the grid for three seconds before the flag. False if quit.
+
+        Nothing about the result depends on it — no car is stepped — but a race
+        that begins mid-frame with four cars already moving reads as a clip
+        starting late. It also gives the panel a moment to be looked at before
+        anything happens, and lands in the recording like a real start.
+        """
+        if self.renderer is None:
+            return True
+        for text, length in _COUNTDOWN:
+            for step in range(length):
+                if self.renderer.poll_quit():
+                    return False
+                self._draw(crew, stage, 0, 0, banner=(text, step / length))
+        return True
+
     def _stats(self, generation: int) -> List[Tuple[str, str]]:
         """Numbers about the run that no curve here shows.
 
@@ -372,6 +428,13 @@ class Simulation:
         the whole argument about how many parameters an entrant can afford
         turns on. Neither is visible in any chart, and both are one line.
         """
+        if self._racing:
+            # Generations, mutation size and evaluations spent mean nothing in
+            # a race; what it is and how long it has run do.
+            return [
+                ("distance", f"{self._race_laps:.0f} laps"),
+                ("elapsed", _clock(time.monotonic() - self._started)),
+            ]
         total = max(1, self.cfg.generations)
         progress = (generation - 1) / max(1, total - 1)
         done = max(0, generation - 1)
@@ -541,49 +604,99 @@ class Simulation:
 
     # -- the race ------------------------------------------------------------
 
-    def race(self, track: Optional[Track] = None) -> List[Result]:
-        """Put every champion on the grid together; return the classification.
+    def race(self, track: Optional[Track] = None, laps: float = 3.0) -> List[Result]:
+        """Race every champion over `laps` laps; return the classification.
 
         The circuit is `gauntlet` unless told otherwise: nobody trained on it, so
         finishing it shows general driving rather than a memorised layout.
+
+        It ends at the flag rather than at the clock. Ranking by distance
+        covered in a fixed number of frames picks the same winner as a real race
+        only while nobody crashes, which is not the usual case; first past a
+        fixed distance is the question anyone watching is actually asking.
         """
         self._film_frames = None  # one lap of one circuit: nothing to leave out
+        self._racing = True
+        self._race_laps = laps
         circuit = track or Track(race_track())
-        # The race is one fixed test: no island rotation, no random start.
-        stage = Stage(circuit, 0, 0, None, self.frame_budget(circuit))
-        # Cars do not collide with one another — the physics never modelled it —
-        # so they are spaced along the centreline only to stay visible. Distance
-        # is measured from each car's own start, so the stagger costs nobody
-        # progress; it does mean they meet each corner a few frames apart.
-        spacing = int(26.0 / stage.track.cfg.sample_spacing)
-        crew: List[Tuple[Squad, Car]] = []
-        for squad in self.squads:
-            genome = self.load_champion(squad)
-            if genome is None:
-                logger.warning("%s has no champion yet and sits this one out", squad.name)
-                continue
-            start = (-len(crew) * spacing) % len(stage.track.samples)
-            crew.append((squad, self._car(stage, squad, genome, start=start)))
-        if not crew:
+        # One fixed test: no island rotation, no random start. The time limit is
+        # twice what the distance takes at top speed — cars average well under
+        # half of it through corners, so the flag is what ends a race and the
+        # clock only catches a field that has all crashed. Deriving it from the
+        # training budget instead made a short race absurdly short: at 0.05 laps
+        # it came out as thirty frames.
+        limit = int(2.0 * laps * circuit.lap_length / self.cfg.car.max_speed)
+        stage = Stage(circuit, 0, 0, None, max(60, limit))
+
+        entered = [
+            (squad, genome)
+            for squad in self.squads
+            for genome in [self.load_champion(squad)]
+            if genome is not None or logger.warning(
+                "%s has no champion yet and sits this one out", squad.name
+            )
+        ]
+        if not entered:
             raise SystemExit("No champions in outputs/ — run train.py first.")
 
+        # A grid across the carriageway rather than a queue along it. Every car
+        # starts on the same centreline point, so the one in front on screen is
+        # the one in front in the results — which staggering them along the lap
+        # made false, since a car 72 px back could be ahead on distance covered.
+        room = circuit.road_width_at_index(0) / 2 - self.cfg.car.width
+        slots = len(entered)
+        crew: List[Tuple[Squad, Car]] = [
+            (
+                squad,
+                self._car(
+                    stage,
+                    squad,
+                    genome,
+                    start=0,
+                    lateral=0.0 if slots < 2 else room * (2 * i / (slots - 1) - 1),
+                ),
+            )
+            for i, (squad, genome) in enumerate(entered)
+        ]
+
         logger.info(
-            "Race on '%s', never trained on: %s",
+            "Race on '%s', never trained on, %.0f laps: %s",
             stage.track.cfg.name,
+            laps,
             ", ".join(squad.name for squad, _ in crew),
         )
-        self._drive(crew, stage, self.cfg.generations)
-        results = [(squad.name, c.laps, c.alive, c.frames) for squad, c in crew]
-        results.sort(key=lambda r: r[1], reverse=True)
+        for _, car in crew:
+            car.finish_laps = laps
+        if not self._countdown(crew, stage):
+            pygame.quit()
+            return []
+        self._drive(crew, stage, 0)
+
+        results: List[Result] = [
+            (s.name, c.laps, c.alive, c.frames, c.frames if c.finished else None)
+            for s, c in crew
+        ]
+        # Finishers first, by how long they took; then everyone else by distance.
+        results.sort(key=lambda r: (r[4] is None, r[4] if r[4] is not None else -r[1]))
         pygame.quit()
         return results
 
 
 def format_results(results: Sequence[Result]) -> str:
-    """The classification as a table, for the log."""
-    lines = [f"{'':>2}  {'entrant':<14} {'laps':>6}  status", "-" * 44]
-    for rank, (name, laps, alive, frames) in enumerate(results, start=1):
-        state = "running at the flag" if alive else f"out on frame {frames}"
+    """The classification as a table, for the log.
+
+    Finishers are timed and the rest are placed by distance, so the table reads
+    as a result rather than as a column of numbers to compare by eye.
+    """
+    lines = [f"{'':>2}  {'entrant':<14} {'laps':>6}  result", "-" * 52]
+    won = next((r[4] for r in results if r[4] is not None), None)
+    for rank, (name, laps, alive, frames, finished) in enumerate(results, start=1):
+        if finished is None:
+            state = "still going at the time limit" if alive else f"out on frame {frames}"
+        elif rank == 1:
+            state = f"WINNER — {finished} frames"
+        else:
+            state = f"+{finished - won} frames"
         lines.append(f"{rank:>2}. {name:<14} {laps:6.2f}  {state}")
     return "\n".join(lines)
 

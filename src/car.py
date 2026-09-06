@@ -47,6 +47,7 @@ class Car:
         brain: Brain,
         cfg: CarConfig,
         start_index: Optional[int] = None,
+        lateral: float = 0.0,
     ) -> None:
         self.cfg = cfg
         self.track = track
@@ -54,8 +55,17 @@ class Car:
         index = 0 if start_index is None else start_index
         self.x, self.y = track.position_at_index(index)
         self.angle = track.heading_at_index(index)
+        # A grid slot across the carriageway, for a race. Cars have to start
+        # somewhere distinct or they are drawn on top of each other, and
+        # offsetting them *along* the lap instead makes the leader on screen
+        # the one who has travelled least — a race nobody can read.
+        if lateral:
+            self.x -= math.sin(self.angle) * lateral
+            self.y += math.cos(self.angle) * lateral
         self.speed = 0.0
         self.alive = True
+        self.finished = False  # crossed the line, as opposed to crashed
+        self.finish_laps: Optional[float] = None  # set for a race, not for training
         self.frames = 0
         self._idle_frames = 0
         self._index = track.nearest_index(self.x, self.y)
@@ -179,6 +189,12 @@ class Car:
         # Islands are part of the road mask, so hitting one counts as off-road.
         if not self.track.is_on_road(self.x, self.y):
             self.alive = False
+        elif self.finish_laps is not None and self.laps >= self.finish_laps:
+            # Crossed the line: the car parks, and `frames` is now its time.
+            # Everyone else races on, so second and third get a time too rather
+            # than being frozen wherever the winner happened to leave them.
+            self.finished = True
+            self.alive = False
         else:
             self._update_idle()
 
@@ -191,6 +207,7 @@ def build_car(
     input_size: int,
     rng: np.random.Generator,
     start_index: Optional[int],
+    lateral: float = 0.0,
 ) -> Car:
     """Put one genome on the grid.
 
@@ -201,4 +218,4 @@ def build_car(
     """
     driver = build_brain(ref, input_size, rng)
     driver.set_genome(genome)
-    return Car(track, driver, cfg, start_index)
+    return Car(track, driver, cfg, start_index, lateral)
