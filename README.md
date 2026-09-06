@@ -58,9 +58,12 @@ race.py                 # take every champion to the unseen circuit
 tests/
 ├── test_core.py        # network, genetic operators, track, car
 ├── test_entrants.py    # the race harness: discovery, contract, parity
+├── test_report.py      # the report's parsers, on real log and checkpoint text
 └── test_tracks.py      # geometric validity of every circuit
 experiments/
-└── ablation.py         # architecture comparison across seeds
+├── ablation.py         # architecture comparison across seeds
+├── make_report.py      # the run as vector figures and tables, for a write-up
+└── report/             # collect, style, figures, tables — one job each
 BRIEF.md                # the spec handed to a competing agent
 docs/decisions.html     # the design record: decisions, numbers, errors
 ```
@@ -91,6 +94,35 @@ python -m pytest tests -q                      # tests
 ```
 
 Each champion is written to `outputs/<name>.npz`, which is what `race.py` reads.
+
+## Writing it up
+
+```
+python experiments/make_report.py              # figures and tables into outputs/report/
+python experiments/make_report.py --png        # raster copies as well, for slides
+python experiments/make_report.py --out paper/figures
+```
+
+A screenshot of the dashboard is a picture of a chart at whatever resolution the
+screen happened to be, in a palette built for a dark window, with labels sized
+for a monitor. This re-draws the same analyses from what the run left on disk —
+the champions, `training.log`, `race.log` and any `ablation_*.json` — as vector
+PDFs, so text stays text and nothing blurs at print size:
+
+| file | what it answers |
+|------|-----------------|
+| `training-curves.pdf` | who improved, and how much of any generation was the draw |
+| `generation-cost.pdf` | what the run cost, generation by generation |
+| `race-standings.pdf` | how far each champion got on the unseen circuit |
+| `circuits.pdf` | the four circuits, drawn from their own geometry |
+| `ablation-<group>.pdf` | every seed as a dot, the median on top of them |
+| `parameters-against-race.pdf` | whether paying for parameters buys laps |
+| `results.md`, `results.tex` | the same numbers as tables, to quote rather than read off |
+
+Anything missing is skipped with a line saying so, so it is worth running
+mid-project and not only at the end. Two analyses the dashboard shows are *not*
+here: genetic spread and the per-circuit best are computed each generation and
+held only in memory, so nothing on disk can reconstruct them.
 
 ## Recording it
 
