@@ -8,6 +8,20 @@ Several networks compete: one written by hand, the others by AI agents. They
 **train together**, in the same run, on the same three circuits, and then race
 together on a fourth circuit none of them has ever seen.
 
+The first full run, 120 generations on the balanced circuits, ended like this:
+
+```
+ 1. paololimo  3.00 laps  WINNER — 1089 frames
+ 2. claude     3.00 laps  +2 frames
+ 3. gemini     1.82 laps  out on frame 674
+ 4. codex      0.35 laps  out on frame 152
+```
+
+Two frames over three laps is three hundredths of a second. It says the top two
+are indistinguishable on this circuit, not that either architecture is better —
+`docs/decisions.html` is the record of what was decided, what was measured, and
+what turned out to be wrong.
+
 ```bash
 python train.py     # everyone evolves side by side, with the dashboard
 python race.py      # every champion on the grid, on the unseen circuit
@@ -47,6 +61,7 @@ tests/
 experiments/
 └── ablation.py         # architecture comparison across seeds
 BRIEF.md                # the spec handed to a competing agent
+docs/decisions.html     # the design record: decisions, numbers, errors
 ```
 
 ## Setup

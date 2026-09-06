@@ -323,18 +323,18 @@
   <p class="eyebrow">cars_ai — design record</p>
   <h1>Four Networks, One Circuit</h1>
   <p class="standfirst">
-    A hand-written neural network races three written by AI agents. Same genetic
-    algorithm, same circuits, same seed — the architecture is the only thing that
-    differs. This is what was decided, what was measured, and what turned out
-    to be wrong.
+    A hand-written neural network raced three written by AI agents. Same genetic
+    algorithm, same circuits, same seed — the architecture the only thing that
+    differed. It came down to two frames. This is what was decided, what was
+    measured, and what turned out to be wrong.
   </p>
   <dl class="telemetry">
     <div><dt>Entrants</dt><dd>4</dd></div>
-    <div><dt>Population</dt><dd>100</dd></div>
     <div><dt>Generations</dt><dd>120</dd></div>
-    <div><dt>Evaluations</dt><dd>12 000</dd></div>
-    <div><dt>Circuits</dt><dd>3 + 1</dd></div>
-    <div><dt>Libraries</dt><dd>numpy</dd></div>
+    <div><dt>Training</dt><dd>2h 10m</dd></div>
+    <div><dt>Race</dt><dd>3 laps</dd></div>
+    <div><dt>Winner</dt><dd>paololimo</dd></div>
+    <div><dt>Margin</dt><dd>2 frames</dd></div>
   </dl>
 </header>
 
@@ -563,6 +563,12 @@
       generations later, corrected a conclusion drawn from its own first
       reading.
     </p>
+    <p>
+      <strong>Both readings below are from the run on the unbalanced
+      circuits</strong>, the one whose per-circuit breakdown is what prompted
+      section 08. Neither is the result; the result is section 09, from a
+      complete run on the circuits as they now stand.
+    </p>
   </div>
   <div class="scroller">
     <table>
@@ -687,28 +693,142 @@
 </section>
 
 <section>
+  <h2><span class="num">09</span>The result</h2>
   <div class="col">
-    <h2><span class="num">09</span>Still open</h2>
+    <p>
+      120 generations, population 100, on the rebalanced circuits. Two hours and
+      ten minutes. Then one race over three laps of a circuit none of them had
+      ever driven.
+    </p>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>Training — best fitness reached, worst circuit + 0.35 x mean</caption>
+      <thead>
+        <tr><th>Entrant</th><th class="num">gen 20</th><th class="num">gen 60</th><th class="num">gen 120</th><th class="num">params</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="who r-paololimo">paololimo</span></td><td class="num">1.99</td><td class="num">3.78</td><td class="num">3.93</td><td class="num">160</td></tr>
+        <tr><td><span class="who r-claude">claude</span></td><td class="num">1.21</td><td class="num">3.72</td><td class="num">3.92</td><td class="num">150</td></tr>
+        <tr><td><span class="who r-codex">codex</span></td><td class="num">1.34</td><td class="num">3.63</td><td class="num">3.86</td><td class="num">344</td></tr>
+        <tr><td><span class="who r-gemini">gemini</span></td><td class="num">1.01</td><td class="num">1.65</td><td class="num">1.95</td><td class="num">150</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>The race — gauntlet, never trained on, first past three laps</caption>
+      <thead>
+        <tr><th></th><th>Entrant</th><th class="num">laps</th><th>result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">1</td><td><span class="who r-paololimo">paololimo</span></td><td class="num">3.00</td><td>WINNER — 1089 frames</td></tr>
+        <tr><td class="num">2</td><td><span class="who r-claude">claude</span></td><td class="num">3.00</td><td>+2 frames</td></tr>
+        <tr><td class="num">3</td><td><span class="who r-gemini">gemini</span></td><td class="num">1.82</td><td>out on frame 674</td></tr>
+        <tr><td class="num">4</td><td><span class="who r-codex">codex</span></td><td class="num">0.35</td><td>out on frame 152</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="finding">
+    <h3>Two frames over three laps</h3>
+    <p>
+      1089 frames against 1091 — three hundredths of a second at 60 fps, after
+      eighteen seconds of racing. The hand-written entry won, and by a margin
+      that says nothing about which architecture is better. It says the two are
+      indistinguishable on this circuit, and that a different seed or a
+      different start point would as easily have reversed it.
+    </p>
+    <p>
+      That margin is only visible at all because the race was rebuilt to measure
+      it. Ranking by distance covered in a fixed number of frames — what it did
+      before — reported this as "3.43 laps against 3.42" and left the reader to
+      wonder whether that was a result or a rounding artefact.
+    </p>
+  </div>
+
+  <div class="col">
+    <h3>Gemini went from first to last, and it is not clear why</h3>
+    <p>
+      On the unbalanced circuits at generation 40, gemini led on all three, at
+      3.72 against the incumbent's 2.83. On the rebalanced ones it finished on
+      1.95 — half of everyone else — and crashed out of the race at 1.82 laps.
+    </p>
+    <p>
+      The honest position is that this is unexplained. Its architecture is the
+      one that does <em>not</em> impose mirror symmetry and splits into two
+      independent six-unit streams, so a plausible story is that the old circuit
+      mix suited it and the new one does not. But a single run per configuration
+      on a search whose seed-to-seed spread is 0.04 to 3.05 laps cannot tell a
+      real effect from a bad draw, and no second run was done. Treat the ranking
+      below the top two as one sample, not as a finding.
+    </p>
+
+    <h3>What the race had to become first</h3>
+    <p>
+      A screenshot where the log said one thing and the picture said another
+      turned out to be three separate defects.
+    </p>
+  </div>
+  <div class="ledger">
+    <span class="was">26 px apart along the lap</span>
+    <span class="arrow">→</span>
+    <span class="now">side by side across the road</span>
+    <p class="why">
+      Staggering the grid along the centreline was fair — distance is counted
+      from each car's own start — and made the picture lie: the eventual winner
+      started 72 px back, so it could lead on distance while looking level. In a
+      race that exists to be watched, a leader you cannot see is a defect.
+    </p>
+  </div>
+  <div class="ledger">
+    <span class="was">furthest at the time limit</span>
+    <span class="arrow">→</span>
+    <span class="now">first past three laps</span>
+    <p class="why">
+      The two pick the same winner only while nobody crashes, which is not the
+      usual case. A car that crosses the line now parks, so the others race on
+      and get a time of their own — the previous version froze the runner-up a
+      hundredth of a lap short and called it "still running".
+    </p>
+  </div>
+  <div class="ledger">
+    <span class="was">GEN 200 · mutation 0.030</span>
+    <span class="arrow">→</span>
+    <span class="now">RACE · running order</span>
+    <p class="why">
+      The panel did not know it was in a race: it displayed generations,
+      mutation size and evaluations spent, and the three analyses read
+      "collecting..." for the whole twenty seconds because a race has no history
+      to plot. It now shows the order and each car's progress to the flag —
+      after a three-second countdown, which changes no result and makes the
+      recording start like a race rather than mid-corner.
+    </p>
+  </div>
+
+  <div class="col">
+    <h3>What the result does not settle</h3>
     <ul class="open">
       <li>
-        <strong>120 generations or 250?</strong> At 160 parameters the current
-        budget is 75 evaluations per parameter, already under the rule of
-        thumb's floor. Doubling it searches what is there properly — but it
-        lifts the constraint most for codex, the only entrant whose 344
-        parameters the budget really binds. A choice about what the race should
-        measure: who designed for the budget, or whose architecture has the
-        higher ceiling.
+        <strong>Depth against width.</strong> The whole point of 8 → 10 → 4 → 2
+        against 8 → 12 → 2 was to test whether a funnel beats one wide layer at
+        the same budget, everything else held. Two frames in eighteen seconds is
+        not an answer; it is a tie reported to more decimal places than it has.
       </li>
       <li>
-        <strong>Does the rebalance hold?</strong> The circuits are now matched
-        on geometry — 2, 8, 6 and 5 hard corners, 12–21% of each lap slowed —
-        but nothing has been trained on them yet. If one still dominates the
-        fitness, the same breakdown will say so within twenty generations.
+        <strong>Whether the search changes helped.</strong> The annealed
+        mutation and the rank-weighted parents went in on argument, not
+        evidence, and this run cannot separate their effect from the circuit
+        rebalance that happened at the same time.
       </li>
       <li>
-        <strong>Depth against width</strong> is a genuine two-horse comparison:
-        160 parameters in a funnel against 150 in one wide layer, same symmetry,
-        same skip, everything else held. The run answers it.
+        <strong>What happened to gemini.</strong> First on the old circuits,
+        last on the new ones, one sample each.
+      </li>
+      <li>
+        <strong>120 generations or 250.</strong> At 160 parameters the budget is
+        75 evaluations per parameter, under the rule of thumb's floor — and it
+        binds codex, at 344, hardest of all.
       </li>
     </ul>
   </div>
@@ -761,6 +881,26 @@
         slideshow, not a video. True at capture and equally true of a 20×
         playback speed-up — but 4–6× is smooth, which is the range anyone
         actually wants, and generalising the extreme to all of it was wrong.
+      </p>
+    </li>
+    <li>
+      <span class="tag">silent</span>
+      <p class="what">A new parameter was added to a signature and never passed on</p>
+      <p class="fix">
+        <code>build_car</code> took the grid's lateral offset and called
+        <code>Car(...)</code> without it, so every car started in the same spot
+        and the new grid did nothing — visibly nothing, but nothing that raised
+        anything. Caught by the test written alongside it.
+      </p>
+    </li>
+    <li>
+      <span class="tag">derived</span>
+      <p class="what">The race time limit was a fraction of the training budget</p>
+      <p class="fix">
+        Scaled as <code>budget x laps / 2</code>, which made a 0.05-lap race
+        come out as thirty frames — long enough for a car to move and not to
+        finish. It is now twice what the distance takes at top speed, derived
+        from the distance rather than from an unrelated number.
       </p>
     </li>
     <li>
