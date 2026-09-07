@@ -40,6 +40,13 @@ def parse_args() -> argparse.Namespace:
         help="also write a 300 dpi raster copy of every figure",
     )
     parser.add_argument(
+        "--at",
+        type=int,
+        nargs="+",
+        default=(20, 60, 120),
+        help="generations to tabulate the per-circuit breakdown at (default 20 60 120)",
+    )
+    parser.add_argument(
         "--no-tracks",
         action="store_true",
         help="skip the circuit maps, which have to build the tracks to draw them",
@@ -116,8 +123,26 @@ def main() -> None:
         logger.info("no training.log — skipping the cost of the run")
 
     if entrants:
+        circuits = [cfg.name for cfg in track_variants()]
         writer.figure(figures.training_curves(entrants), "training-curves")
+        writer.figure(figures.genetic_spread(entrants), "genetic-spread")
+        writer.figure(figures.per_circuit(entrants, circuits), "per-circuit")
         sections["The run"] = tables.run_summary(entrants, seconds)
+        # The two series the dashboard shows and no report could quote, now
+        # that they are in the checkpoints: as CSV to be re-plotted elsewhere,
+        # and at three generations as a table to be read.
+        writer.text(tables.spread_csv(entrants), "spread.csv")
+        writer.text(tables.circuits_csv(entrants, circuits), "circuits.csv")
+        divisors = tables.spread_divisors(entrants)
+        if divisors:
+            sections["Genetic spread"] = (
+                "`spread.csv` holds every generation, each entrant divided by its own "
+                "generation-1 spread:\n\n" + divisors
+            )
+        breakdown = tables.circuits_at(entrants, circuits, args.at)
+        if breakdown:
+            sections["Best per circuit"] = breakdown["markdown"]
+            latex.append(breakdown["latex"])
     else:
         logger.info("no champions in %s — run train.py first", args.outputs)
 

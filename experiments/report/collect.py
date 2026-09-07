@@ -5,10 +5,10 @@ the race log, and one JSON per ablation group. Each is parsed here into a frozen
 record, and nothing downstream touches a file — so a figure can be re-drawn
 without a run, and a missing trace is a missing figure rather than a crash.
 
-Two things a run *does not* leave are genetic spread and the per-circuit best.
-Both are computed each generation and held only in memory, so no amount of
-parsing recovers them; persisting them is two lines in `Simulation.save_all`
-and a retrain, which is why they are absent here rather than approximated.
+Genetic spread and the per-circuit bests were, until recently, computed every
+generation and then dropped: a checkpoint written before that was fixed simply
+has neither array, so both are optional here. An old champion still produces
+every other figure rather than failing the whole report.
 """
 
 import json
@@ -50,6 +50,25 @@ class Entrant:
     population: int
     seed: int
     brain: str
+    # Mean per-gene standard deviation of the population, per generation, and
+    # the best score on each circuit, per generation. Both are absent from any
+    # checkpoint written before they were persisted, hence optional.
+    spread: Optional[np.ndarray] = None
+    circuit_history: Optional[np.ndarray] = None
+
+    @property
+    def relative_spread(self) -> Optional[np.ndarray]:
+        """Spread against this entrant's own generation 1.
+
+        Genome sizes differ by more than a factor of two across the entrants,
+        and so do the absolute spreads, so the raw numbers share no axis. What
+        is comparable is how much of its own starting diversity each population
+        still has — and a line on the floor is a population that has become one
+        genome in a hundred copies, whatever it started from.
+        """
+        if self.spread is None or len(self.spread) == 0 or self.spread[0] <= 0:
+            return None
+        return self.spread / float(self.spread[0])
 
     @property
     def running_best(self) -> np.ndarray:
@@ -114,6 +133,14 @@ class AblationGroup:
 # -- checkpoints -------------------------------------------------------------
 
 
+def _optional(data, key: str) -> Optional[np.ndarray]:
+    """An array a checkpoint may predate."""
+    if key not in data:
+        return None
+    values = np.asarray(data[key], dtype=float)
+    return values if values.size else None
+
+
 def load_entrants(outputs: Path) -> List[Entrant]:
     """Every champion in `outputs/`, in the order they finished training best.
 
@@ -137,6 +164,8 @@ def load_entrants(outputs: Path) -> List[Entrant]:
                 population=int(data["population"]),
                 seed=int(data["seed"]),
                 brain=str(data["brain"]),
+                spread=_optional(data, "spread"),
+                circuit_history=_optional(data, "circuit_history"),
             )
         )
     return sorted(entrants, key=lambda e: -e.best_fitness)

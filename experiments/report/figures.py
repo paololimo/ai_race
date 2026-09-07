@@ -127,6 +127,91 @@ def generation_cost(seconds: np.ndarray, window: int = 5) -> Figure:
     return figure
 
 
+def genetic_spread(entrants: Sequence[Entrant]) -> Optional[Figure]:
+    """Is the search still alive?
+
+    A genetic algorithm can converge to one genome in a hundred copies and go
+    on running for another ninety generations, improving nothing. This is the
+    measurement that tells that apart from a hard problem: a flat fitness curve
+    over a spread still well off the floor is a search that is still looking
+    and not finding, while a flat curve over a spread at zero is a population
+    with nothing left to recombine, where the remaining generations were spent
+    before they were run.
+
+    Each entrant is normalised to its own generation 1, because the genome
+    sizes differ by more than a factor of two and the absolute spreads with
+    them; what is comparable is the fraction of its own diversity each one has
+    left.
+    """
+    tracked = [e for e in entrants if e.relative_spread is not None]
+    if not tracked:
+        return None
+    figure, axes = _figure()
+    for ordinal, entrant in enumerate(tracked):
+        relative = entrant.relative_spread
+        assert relative is not None
+        color = color_for(entrant.name, ordinal)
+        axes.plot(np.arange(1, len(relative) + 1), relative, color=color, linewidth=1.6)
+
+    heights = _spread_out([float(e.relative_spread[-1]) for e in tracked], 0.045)
+    for ordinal, (entrant, height) in enumerate(zip(tracked, heights, strict=True)):
+        relative = entrant.relative_spread
+        assert relative is not None
+        _label_line(axes, len(relative), height, entrant.name, color_for(entrant.name, ordinal))
+
+    axes.axhline(0.0, color=INK, linewidth=0.6)
+    axes.set_title("Genetic spread, against each entrant's own generation 1")
+    axes.set_xlabel("generation")
+    axes.set_ylabel("population diversity remaining")
+    axes.set_xlim(1, max(len(e.spread) for e in tracked if e.spread is not None))
+    axes.set_ylim(bottom=0)
+    axes.margins(x=0.12)
+    figure.tight_layout()
+    return figure
+
+
+def per_circuit(entrants: Sequence[Entrant], circuits: Sequence[str]) -> Optional[Figure]:
+    """What is holding each entrant back, circuit by circuit.
+
+    Fitness is led by the worst of the three, so an entrant fast on two
+    circuits and stuck on the third is a completely different problem from one
+    uniformly slow — and the aggregate cannot tell them apart. One panel per
+    circuit, shared axes, so a line that sits below its own level in the other
+    panels names the circuit doing the holding.
+    """
+    tracked = [e for e in entrants if e.circuit_history is not None]
+    if not tracked:
+        return None
+    count = min(min(e.circuit_history.shape[1] for e in tracked), len(circuits))
+    figure = Figure(figsize=(WIDTH, 2.6))
+    axes_row = figure.subplots(1, count, sharey=True)
+    peak = max(float(np.max(e.circuit_history)) for e in tracked)
+    for circuit in range(count):
+        axes = axes_row[circuit] if count > 1 else axes_row
+        for ordinal, entrant in enumerate(tracked):
+            values = entrant.circuit_history[:, circuit]
+            axes.plot(
+                np.arange(1, len(values) + 1),
+                np.maximum.accumulate(values),
+                color=color_for(entrant.name, ordinal),
+                linewidth=1.3,
+            )
+        axes.set_title(circuits[circuit], fontsize=8.5)
+        axes.set_xlabel("generation")
+        axes.set_ylim(0, peak * 1.05)
+    first = axes_row[0] if count > 1 else axes_row
+    first.set_ylabel("best score on this circuit")
+    for ordinal, entrant in enumerate(tracked):
+        values = entrant.circuit_history[:, count - 1]
+        last = axes_row[count - 1] if count > 1 else axes_row
+        _label_line(
+            last, len(values), float(np.max(values)), entrant.name,
+            color_for(entrant.name, ordinal),
+        )
+    figure.tight_layout()
+    return figure
+
+
 # -- the race ----------------------------------------------------------------
 
 
@@ -336,7 +421,9 @@ def _islands(track) -> List[np.ndarray]:
 __all__ = [
     "ablation_dots",
     "generation_cost",
+    "genetic_spread",
     "parameters_against_race",
+    "per_circuit",
     "race_standings",
     "track_maps",
     "training_curves",

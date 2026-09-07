@@ -80,6 +80,11 @@ class Squad:
     # mean`, so the lowest of these is what is actually holding the entrant
     # back — and it was being aggregated away before anyone could see it.
     circuits: List[float] = field(default_factory=list)
+    # The same three numbers kept for every generation, rather than only the
+    # latest. The strip under the circuit needs one generation; asking which
+    # circuit held an entrant back *while it was learning* needs all of them,
+    # and the answer cannot be reconstructed afterwards from anything else.
+    circuit_history: List[List[float]] = field(default_factory=list)
     best_fitness: float = 0.0
     best_genome: Optional[np.ndarray] = None
 
@@ -526,6 +531,7 @@ class Simulation:
                 # breeding replaces it.
                 squad.spread.append(float(np.std(np.asarray(squad.genomes), axis=0).mean()))
                 squad.circuits = [float(np.max(scores)) for scores in per_track[i]]
+                squad.circuit_history.append(list(squad.circuits))
                 squad.genomes = next_generation(
                     squad.genomes, list(totals), self.cfg.genetic, squad.rng, progress
                 )
@@ -575,6 +581,13 @@ class Simulation:
                 generations=self.cfg.generations,
                 population=self.cfg.genetic.population_size,
                 history=np.array(squad.history),
+                # Spread and the per-circuit bests were computed every
+                # generation and then dropped on the floor: the run was over
+                # before anyone could ask whether a plateau was convergence or
+                # a hard problem, and nothing on disk could answer it. They
+                # cost four numbers a generation to keep.
+                spread=np.array(squad.spread),
+                circuit_history=np.array(squad.circuit_history),
             )
             logger.info("%-12s %5.2f  ->  %s", squad.name, squad.best_fitness, path)
             written.append(path)

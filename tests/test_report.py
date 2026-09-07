@@ -17,6 +17,7 @@ from experiments.report.collect import (
     parse_training_log,
     race_target,
 )
+from experiments.report.tables import circuits_at, circuits_csv, spread_csv
 
 RACE_LOG = """2026-09-06 03:14:24,563 INFO Recording to outputs/race.mp4 at 60 fps
 2026-09-06 03:14:24,673 INFO Race on 'gauntlet', never trained on, 5 laps: a, b, c
@@ -102,3 +103,52 @@ def test_ablation_rows_are_split_back_into_the_questions_they_answer(tmp_path):
 def test_an_unreadable_ablation_file_is_skipped_rather_than_fatal(tmp_path):
     (tmp_path / "ablation_broken.json").write_text("{not json")
     assert load_ablations(tmp_path) == []
+
+
+def _champion(path, **extra):
+    np.savez(
+        path,
+        genome=np.zeros(150),
+        fitness=1.0,
+        input_size=9,
+        brain="claude",
+        spec=json.dumps({}),
+        seed=42,
+        generations=3,
+        population=100,
+        history=np.array([0.1, 0.4, 0.3]),
+        **extra,
+    )
+
+
+def test_spread_and_per_circuit_survive_the_round_trip(tmp_path):
+    _champion(
+        tmp_path / "claude.npz",
+        spread=np.array([0.8, 0.4, 0.2]),
+        circuit_history=np.array([[1.0, 2.0, 3.0], [1.5, 2.5, 3.5], [2.0, 3.0, 4.0]]),
+    )
+    (entrant,) = load_entrants(tmp_path)
+    assert list(entrant.relative_spread) == [1.0, 0.5, 0.25]
+    assert entrant.circuit_history.shape == (3, 3)
+
+    lines = spread_csv([entrant]).splitlines()
+    assert lines[0] == "generation,claude"
+    assert lines[-1] == "3,0.250000"
+
+    columns = circuits_csv([entrant], ["serpentine", "grid-city", "speedway"]).splitlines()[0]
+    assert columns == "generation,claude_serpentine,claude_grid-city,claude_speedway"
+
+    # The weakest circuit is starred, because it is the one leading the fitness.
+    table = circuits_at([entrant], ["a", "b", "c"], [3])["markdown"]
+    assert "2.00*" in table and "4.00 " in table
+
+
+def test_a_checkpoint_written_before_the_fix_still_reports(tmp_path):
+    """An old champion has neither array and must not take the report down."""
+    _champion(tmp_path / "codex.npz")
+    (entrant,) = load_entrants(tmp_path)
+    assert entrant.spread is None and entrant.circuit_history is None
+    assert entrant.relative_spread is None
+    assert spread_csv([entrant]) == ""
+    assert circuits_csv([entrant], ["a"]) == ""
+    assert circuits_at([entrant], ["a"], [1]) == {}
