@@ -456,3 +456,7 @@ can reach is not a feature, it is a claim the tests can no longer check.
   project is reproducible with no external assets.
 - Continuous outputs (steering, throttle) instead of discrete actions.
 - Islands in the carriageway are an addition; the original had only the verges.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
